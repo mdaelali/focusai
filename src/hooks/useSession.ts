@@ -359,7 +359,7 @@ export function useSession() {
       lastUiRef.current = 0
       lastTimelineRef.current = 0
       lastVideoTimeRef.current = -1
-      lastFrameAtRef.current = performance.now()
+      lastFrameAtRef.current = 0 // stall detection starts after the first real frame
 
       setStatus('running')
       runningRef.current = true
