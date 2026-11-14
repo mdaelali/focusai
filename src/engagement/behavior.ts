@@ -401,8 +401,12 @@ export class BehaviorTracker {
     } else {
       this.candidate = null
     }
-    this.reason = raw.reason
-    this.confidence = raw.confidence
+    // Only describe the committed state; while a change is pending the old
+    // label stays with its old reason, so the card never contradicts itself.
+    if (target === this.state) {
+      this.reason = raw.reason
+      this.confidence = raw.confidence
+    }
 
     const alerts = this.evaluateAlerts(t)
     return {
