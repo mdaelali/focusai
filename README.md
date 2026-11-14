@@ -1,6 +1,6 @@
 # FocusAI
 
-**Live: https://focusai-self.vercel.app** · MIT licence · [Security](SECURITY.md)
+**Live: https://myfocusai.app** · MIT licence · [Security](SECURITY.md)
 
 FocusAI tells a teacher or meeting host how their class is doing in an online lesson,
 without anyone watching the students. Each student opens FocusAI beside Zoom, Google Meet
