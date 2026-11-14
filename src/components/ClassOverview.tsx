@@ -13,8 +13,10 @@ interface Props {
  */
 export function ClassOverview({ participants, timeline }: Props) {
   const counts = { attentive: 0, excused: 0, warn: 0, noData: 0 }
-  for (const p of participants) counts[bucketOf(p)]++
-  const total = participants.length
+  const present = participants.filter((p) => !p.left)
+  const leftCount = participants.length - present.length
+  for (const p of present) counts[bucketOf(p)]++
+  const total = present.length
   const withData = total - counts.noData
   const okPct = withData > 0 ? Math.round(((counts.attentive + counts.excused) / withData) * 100) : null
 
@@ -66,6 +68,7 @@ export function ClassOverview({ participants, timeline }: Props) {
         <Legend color="var(--info)" text={`${counts.excused} notes / talking / brief`} />
         <Legend color="var(--warn)" text={`${counts.warn} away / elsewhere / phone`} />
         <Legend color="var(--border)" text={`${counts.noData} no data`} />
+        {leftCount > 0 && <span>· {leftCount} left</span>}
       </div>
 
       {sag && (

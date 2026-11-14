@@ -50,7 +50,11 @@ interface LiveState {
   behavior: BehaviorSnapshot | null
   fps: number
   elapsedSec: number
+  /** No new video frame for several seconds while running: frozen or covered camera. */
+  cameraStalled: boolean
 }
+
+const STALL_MS = 8000
 
 const UI_INTERVAL_MS = 200
 const TIMELINE_INTERVAL_MS = 1000
@@ -158,7 +162,8 @@ export function useSession() {
   const [weights, setWeightsState] = useState<Weights>(DEFAULT_WEIGHTS)
   const [thresholds, setThresholdsState] = useState<Thresholds>(DEFAULT_THRESHOLDS)
   const [calibration, setCalibrationState] = useState<Calibration | null>(null)
-  const [live, setLive] = useState<LiveState>({ frame: null, window: null, behavior: null, fps: 0, elapsedSec: 0 })
+  const [live, setLive] = useState<LiveState>({ frame: null, window: null, behavior: null, fps: 0, elapsedSec: 0, cameraStalled: false })
+  const lastFrameAtRef = useRef(0)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [policy, setPolicyState] = useState<BehaviorPolicy>(DEFAULT_POLICY)
   const [selfStatus, setSelfStatusState] = useState<SelfStatus>('none')
@@ -193,6 +198,7 @@ export function useSession() {
     // Only analyse when a new video frame is available.
     if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
       lastVideoTimeRef.current = video.currentTime
+      lastFrameAtRef.current = now
       dbg().frames++
       let m: FrameMeasurement
       try {
@@ -284,11 +290,17 @@ export function useSession() {
           frame: m,
           window: stats,
           behavior: behaviorSnapRef.current,
+          cameraStalled: false,
           fps: f.value,
           elapsedSec: Math.floor((now - startRef.current) / 1000),
         })
         setLiveTimeline(timelineRef.current.slice())
       }
+    } else if (lastFrameAtRef.current && now - lastFrameAtRef.current > STALL_MS && now - lastUiRef.current >= 1000) {
+      // The stream is open but no frames arrive: the camera froze, was covered
+      // by the OS privacy switch, or the device went to sleep. Say so.
+      lastUiRef.current = now
+      setLive((prev) => (prev.cameraStalled ? prev : { ...prev, cameraStalled: true }))
     }
     schedule(loop)
   }, [])
@@ -324,6 +336,13 @@ export function useSession() {
       if (!video) throw new Error('Video element not mounted.')
       video.srcObject = stream
       await video.play()
+      for (const track of stream.getVideoTracks()) {
+        track.addEventListener('ended', () => {
+          if (streamRef.current !== stream) return
+          stopRef.current()
+          setError('The camera stopped: unplugged, switched off, or taken by another app. Start again when it is back.')
+        })
+      }
 
       framesRef.current = []
       timelineRef.current = []
@@ -340,6 +359,7 @@ export function useSession() {
       lastUiRef.current = 0
       lastTimelineRef.current = 0
       lastVideoTimeRef.current = -1
+      lastFrameAtRef.current = performance.now()
 
       setStatus('running')
       runningRef.current = true
@@ -364,6 +384,7 @@ export function useSession() {
     if (videoRef.current) videoRef.current.srcObject = null
   }
 
+  const stopRef = useRef<() => void>(() => {})
   const stop = useCallback(() => {
     if (status !== 'running') return
     const now = performance.now()
@@ -392,6 +413,7 @@ export function useSession() {
     })
     setStatus('stopped')
   }, [status, calibration])
+  stopRef.current = stop
 
   /** Use the last second of frames as the "looking at the lesson" baseline. */
   const calibrate = useCallback((): boolean => {

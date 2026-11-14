@@ -53,7 +53,9 @@ minutes. Change pace rather than call anyone out:
 | Looking elsewhere | Second screen, window, another device | Direct a question their way, or a private "are you still with us?" |
 | Using phone | Phone in hand and eyes on it | A private nudge; or a group reminder without names |
 | Eyes closed | Tired, or very long blink patterns | A private message; consider a break if several appear |
-| No camera data | Camera off, poor light, face too small | Not a behaviour issue. Ask them to adjust the camera at a natural pause |
+| No camera data | Poor light, face too small | Not a behaviour issue. Ask them to adjust the camera at a natural pause |
+| Camera off | Pressed Stop sharing, or the camera was unplugged or taken by another app | You get an immediate alert. A private message asking them to turn it back on |
+| Left | Pressed Leave, closed the tab, or went silent for 10 minutes | You get an immediate alert and the card stays on the roster marked "Left" with the time |
 
 Blue cards (taking notes, talking to someone, brief interruption) and anything a student
 marked themself need no action. They are shown so you know what is going on, not so you act.

@@ -8,6 +8,9 @@ export interface RosterEntry extends ParticipantReport {
   lastSeen: number
   /** No report for a while: tab closed, network gone, or laptop asleep. */
   stale: boolean
+  /** Pressed Leave, closed the tab, or silent for a long time. Kept on the roster. */
+  left: boolean
+  leftAt: number | null
 }
 
 export interface HostAlert extends AlertMessage {
@@ -93,12 +96,27 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
     const t = createTransport(room)
     transportRef.current = t
     setKind(t.kind)
+    // Alerts the host raises itself about presence: camera off, left, silent.
+    let seq = 0
+    const hostAlert = (who: { id: string; name: string }, severity: 'info' | 'check_in', state: BehaviorState, message: string) => {
+      const ts = Date.now()
+      const tot = totalsRef.current.get(who.id)
+      if (tot) {
+        tot.alerts++
+        tot.alertLog.push({ ts, state, severity, message })
+      }
+      setAlerts((prev) => [{ kind: 'alert' as const, id: who.id, name: who.name, ts, alert: { id: `host-${ts}-${seq++}`, t: ts, state, severity, message }, seen: false }, ...prev].slice(0, 200))
+    }
+
     const off = t.onMessage((m) => {
       const now = Date.now()
       if (m.kind === 'report') {
         // Attribute time since the previous report to the previous state.
         const prev = rosterRef.current.get(m.id)
         if (!prev) t.send(hello())
+        if (prev?.left) hostAlert(m, 'info', m.state, 'Rejoined the session')
+        else if (prev && prev.camera && !m.camera) hostAlert(m, 'check_in', 'no_data', 'Turned the camera off')
+        else if (prev && !prev.camera && m.camera && prev.lastSeen > 0) hostAlert(m, 'info', m.state, 'Camera is on again')
         const tot = totalsRef.current.get(m.id) ?? {
           id: m.id, name: m.name, byState: {}, selfDeclaredMs: 0, alerts: 0, firstSeen: m.ts, lastSeen: m.ts, episodes: [], alertLog: [],
         }
@@ -127,7 +145,7 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
         totalsRef.current.set(m.id, tot)
         setRoster((prevMap) => {
           const next = new Map(prevMap)
-          next.set(m.id, { ...m, lastSeen: now, stale: false })
+          next.set(m.id, { ...m, lastSeen: now, stale: false, left: false, leftAt: null })
           return next
         })
       } else if (m.kind === 'alert') {
@@ -138,11 +156,15 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
         }
         setAlerts((prev) => (prev.some((a) => a.alert.id === m.alert.id && a.id === m.id) ? prev : [{ ...m, seen: false }, ...prev].slice(0, 200)))
       } else if (m.kind === 'leave') {
-        setRoster((prev) => {
-          const next = new Map(prev)
-          next.delete(m.id)
-          return next
-        })
+        const who = rosterRef.current.get(m.id)
+        if (who && !who.left) {
+          hostAlert(who, 'check_in', 'no_data', 'Left the session')
+          setRoster((prev) => {
+            const next = new Map(prev)
+            next.set(m.id, { ...who, left: true, leftAt: now, camera: false, stale: false })
+            return next
+          })
+        }
       }
     })
     const hello = (): HostHello => ({ kind: 'host', ts: Date.now(), lesson: optionsRef.current.lesson, policy: optionsRef.current.policy })
@@ -151,28 +173,32 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
 
     const staleTimer = window.setInterval(() => {
       const now = Date.now()
-      setRoster((prev) => {
-        let changed = false
-        const next = new Map(prev)
-        for (const [id, e] of next) {
-          if (now - e.lastSeen > DROP_MS) {
-            next.delete(id)
-            changed = true
-          } else {
-            const stale = now - e.lastSeen > STALE_MS
-            if (stale !== e.stale) {
-              next.set(id, { ...e, stale })
-              changed = true
-            }
+      const updates = new Map<string, RosterEntry>()
+      for (const [id, e] of rosterRef.current) {
+        if (e.left) continue
+        if (now - e.lastSeen > DROP_MS) {
+          updates.set(id, { ...e, left: true, leftAt: now, camera: false, stale: false })
+          hostAlert(e, 'check_in', 'no_data', 'Left the session (no updates for 10 minutes)')
+        } else {
+          const stale = now - e.lastSeen > STALE_MS
+          if (stale !== e.stale) {
+            updates.set(id, { ...e, stale })
+            if (stale) hostAlert(e, 'check_in', 'no_data', 'Stopped sending updates: tab closed, computer asleep or offline')
           }
         }
-        return changed ? next : prev
-      })
+      }
+      if (updates.size) {
+        setRoster((prev) => {
+          const next = new Map(prev)
+          for (const [id, e] of updates) next.set(id, e)
+          return next
+        })
+      }
     }, 2000)
 
     const sampleTimer = window.setInterval(() => {
       const now = Date.now()
-      const people = [...rosterRef.current.values()]
+      const people = [...rosterRef.current.values()].filter((p) => !p.left)
       const s: ClassSample = { t: now, min: Math.round(((now - openedAtRef.current) / 60_000) * 10) / 10, total: people.length, attentive: 0, excused: 0, warn: 0, noData: 0, okPct: null }
       for (const p of people) s[bucketOf(p)]++
       const withData = s.total - s.noData
@@ -191,7 +217,7 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
   }, [room])
 
   const participants = useMemo(
-    () => [...roster.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    () => [...roster.values()].sort((a, b) => Number(a.left) - Number(b.left) || a.name.localeCompare(b.name)),
     [roster],
   )
 

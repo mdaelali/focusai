@@ -20,9 +20,10 @@ export default function Join({ room, name }: Props) {
 
   // Push the newest state to the room whenever it changes.
   useEffect(() => {
-    r.publish(s.live.behavior, s.live.window?.score ?? null, running)
+    const stalled = running && s.live.cameraStalled
+    r.publish(s.live.behavior, s.live.window?.score ?? null, running && !stalled, stalled ? 'Camera is not delivering frames' : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.live.behavior, s.live.window?.score, running])
+  }, [s.live.behavior, s.live.window?.score, running, s.live.cameraStalled])
 
   const start = () => {
     setConsented(true)
@@ -50,7 +51,12 @@ export default function Join({ room, name }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {running && s.live.behavior && <StateBadge state={s.live.behavior.state} />}
+          {running && s.live.cameraStalled && (
+            <span className="rounded-full border px-2.5 py-1 text-xs" style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}>
+              Camera is not delivering frames
+            </span>
+          )}
+          {running && !s.live.cameraStalled && s.live.behavior && <StateBadge state={s.live.behavior.state} />}
           <button
             type="button"
             onClick={leave}

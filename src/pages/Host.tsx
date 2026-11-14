@@ -98,7 +98,9 @@ export default function Host({ room, presetId }: Props) {
     return c
   }, [h.participants])
 
-  const needsCheckIn = h.participants.filter((p) => !p.excused && !p.stale && (p.state === 'stepped_away' || p.state === 'distracted' || p.state === 'drowsy' || p.state === 'using_phone'))
+  const needsCheckIn = h.participants.filter((p) => !p.left && (p.stale || !p.camera || (!p.excused && (p.state === 'stepped_away' || p.state === 'distracted' || p.state === 'drowsy' || p.state === 'using_phone'))))
+  const checkInLabel = (p: RosterEntry) =>
+    p.stale ? `no updates for ${fmtDuration(now - p.lastSeen)}` : !p.camera ? `camera off for ${fmtDuration(now - p.since)}` : `${STATE_LABEL[p.state].toLowerCase()} for ${fmtDuration(now - p.since)}`
 
   return (
     <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-4 py-6">
@@ -259,9 +261,7 @@ export default function Host({ room, presetId }: Props) {
                 {needsCheckIn.map((p) => (
                   <li key={p.id} className="flex items-center justify-between gap-2">
                     <span className="font-medium">{p.name}</span>
-                    <span className="text-xs text-[var(--muted)]">
-                      {STATE_LABEL[p.state].toLowerCase()} for {fmtDuration(now - p.since)}
-                    </span>
+                    <span className="text-xs text-[var(--muted)]">{checkInLabel(p)}</span>
                   </li>
                 ))}
               </ul>
@@ -338,14 +338,27 @@ export default function Host({ room, presetId }: Props) {
 
 function ParticipantCard({ p, now }: { p: RosterEntry; now: number }) {
   const color = stateColor(p.state)
-  const attention = p.score !== null && p.camera ? p.score : null
+  const attention = p.score !== null && p.camera && !p.left ? p.score : null
+  if (p.left) {
+    return (
+      <div className="panel flex flex-col gap-2 p-4" style={{ opacity: 0.5 }}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="truncate font-medium">{p.name}</div>
+          <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--muted)]">Left</span>
+        </div>
+        <div className="text-[11px] text-[var(--muted)]">
+          Left at {new Date(p.leftAt ?? p.lastSeen).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} · {fmtDuration(now - (p.leftAt ?? p.lastSeen))} ago
+        </div>
+      </div>
+    )
+  }
   return (
-    <div className="panel flex flex-col gap-2.5 p-4" style={{ opacity: p.stale ? 0.55 : 1 }}>
+    <div className="panel flex flex-col gap-2.5 p-4" style={{ opacity: p.stale ? 0.55 : 1, borderColor: p.stale || !p.camera ? 'var(--warn)' : undefined }}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate font-medium">{p.name}</div>
-          <div className="text-[11px] text-[var(--muted)]">
-            {p.stale ? `No update for ${fmtDuration(now - p.lastSeen)}` : p.camera ? 'Sharing' : 'Camera off'}
+          <div className="text-[11px]" style={{ color: p.stale || !p.camera ? 'var(--warn)' : 'var(--muted)' }}>
+            {p.stale ? `No update for ${fmtDuration(now - p.lastSeen)}` : p.camera ? 'Sharing' : `Camera off for ${fmtDuration(now - p.since)}`}
           </div>
         </div>
         <span className="text-xl font-semibold tabular-nums" style={{ color: attention === null ? 'var(--muted)' : color }}>
@@ -353,7 +366,7 @@ function ParticipantCard({ p, now }: { p: RosterEntry; now: number }) {
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <StateBadge state={p.state} size="sm" />
+        <StateBadge state={p.camera ? p.state : 'no_data'} size="sm" />
         <span className="text-[11px] tabular-nums text-[var(--muted)]">{fmtDuration(now - p.since)}</span>
       </div>
       {p.selfStatus !== 'none' && (

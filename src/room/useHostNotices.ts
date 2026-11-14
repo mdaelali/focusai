@@ -83,7 +83,7 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
     for (const p of participants) {
       next.set(p.id, p.state)
       const before = prev.get(p.id)
-      if (before !== undefined && before !== p.state && WARN_STATES.has(p.state) && !p.excused && !p.stale) {
+      if (before !== undefined && before !== p.state && WARN_STATES.has(p.state) && !p.excused && !p.stale && !p.left) {
         push({
           id: `${p.id}-${p.state}-${p.ts}`,
           ts: Date.now(),

@@ -12,7 +12,7 @@ const REPORT_INTERVAL_MS = 2000
 export function useRoomParticipant(room: string, name: string, onHello?: (h: HostHello) => void) {
   const idRef = useRef<string>(newParticipantId())
   const transportRef = useRef<RoomTransport | null>(null)
-  const latestRef = useRef<{ snap: BehaviorSnapshot | null; score: number | null; camera: boolean }>({ snap: null, score: null, camera: false })
+  const latestRef = useRef<{ snap: BehaviorSnapshot | null; score: number | null; camera: boolean; note: string | null }>({ snap: null, score: null, camera: false, note: null })
   const lastSentRef = useRef(0)
   const [kind, setKind] = useState<TransportKind>('local')
   const [sentCount, setSentCount] = useState(0)
@@ -21,7 +21,7 @@ export function useRoomParticipant(room: string, name: string, onHello?: (h: Hos
   onHelloRef.current = onHello
 
   const buildReport = (): ParticipantReport | null => {
-    const { snap, score, camera } = latestRef.current
+    const { snap, score, camera, note } = latestRef.current
     const now = Date.now()
     // performance.now() based `since` must be converted to wall-clock time.
     const offset = now - performance.now()
@@ -35,7 +35,7 @@ export function useRoomParticipant(room: string, name: string, onHello?: (h: Hos
       score,
       selfStatus: snap?.selfStatus ?? 'none',
       excused: snap?.excused ?? false,
-      reason: snap?.reason ?? (camera ? 'Starting' : 'Camera off'),
+      reason: camera ? (snap?.reason ?? 'Starting') : (note ?? 'Camera off'),
       camera,
     }
   }
@@ -72,8 +72,8 @@ export function useRoomParticipant(room: string, name: string, onHello?: (h: Hos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room, name])
 
-  const publish = (snap: BehaviorSnapshot | null, score: number | null, camera: boolean) => {
-    latestRef.current = { snap, score, camera }
+  const publish = (snap: BehaviorSnapshot | null, score: number | null, camera: boolean, note: string | null = null) => {
+    latestRef.current = { snap, score, camera, note }
     for (const a of snap?.alerts ?? []) sendAlert(a)
   }
 
