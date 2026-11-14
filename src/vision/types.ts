@@ -22,6 +22,10 @@ export interface FrameMeasurement {
   eyesClosed: boolean
   /** Jaw openness 0..1 from blendshapes. Varies rapidly while speaking. */
   mouthOpen: number
+  /** A hand-held phone was detected in the frame (smoothed over ~2 s). */
+  phoneVisible: boolean
+  /** 0..1: lower face lit from below more than usual (screen glow), see LightingProbe. */
+  glowBelow: number
   landmarks: NormalizedLandmark[] | null
 }
 

@@ -52,7 +52,7 @@ Never: frames, images, landmarks, raw head angles, audio.
 | Situation | How it is detected | Treated as |
 | --- | --- | --- |
 | Writing notes | Head pitched down toward the desk, face still present, occasional glance back at the screen | **Taking notes**, excused indefinitely while glances continue; one gentle info after 4 min with no glance |
-| Dropped something, bent out of view | Face absent for under 20 s then back | **Brief interruption**, excused, nothing recorded as "away" |
+| Dropped something, bent out of view | Face absent for under 5 s then back | **Brief interruption**, excused, nothing recorded as "away" |
 | Parent / partner / colleague walks in | Head turned away and mouth moving, or a second face in view | **Talking to someone**, excused; one info after 5 min |
 | Answering in the meeting | Mouth moving while facing the screen | Attentive or talking, excused |
 | Any situation the student marks themself | Buttons: Taking notes / Interrupted / Stepping away | Always trusted over the camera; alerts silenced; one reminder after 10 min |
@@ -61,7 +61,8 @@ What does reach the host as "consider checking in":
 
 | Situation | After |
 | --- | --- |
-| Away from the camera, not self-declared | 3 min |
+| Away from the camera for more than 5 s, not self-declared | Immediate notice (card, toast, tone, desktop notification); check-in alert after 3 min |
+| Phone in hand with eyes off the screen | Immediate notice; check-in alert after 1 min |
 | Looking elsewhere continuously, head not down, not talking | 2 min |
 | Eyes closed continuously | 45 s |
 | No usable camera data (camera off, face unmeasurable) | 2 min, as info only |
@@ -69,6 +70,36 @@ What does reach the host as "consider checking in":
 All thresholds live in `DEFAULT_POLICY` in `src/engagement/behavior.ts`. A new state must
 hold 3 s before it replaces the old one, so a quick look to the side never flips anything.
 Each alert fires once per episode with a 5 minute cooldown per participant.
+
+## How the host is warned
+
+| Moment | What the host gets |
+| --- | --- |
+| A participant enters an amber state (stepped away, looking elsewhere, using phone, eyes closed) and has not declared a status | Card turns amber with a running timer, name appears under **Suggested check-ins**, a toast slides in, one tone plays, and a desktop notification is sent if the host tab is hidden behind the meeting window |
+| The pattern lasts past the threshold | A **Consider checking in** entry in the Alerts list, two tones, desktop notification, and a count in the tab title |
+| A blue state or a self-declared status | Nothing. Shown on the card only |
+
+Sound is on by default and can be turned off. Desktop notifications need one click on
+**Enable desktop notifications** and the browser's permission.
+
+## Phone use
+
+The face model cannot see a phone. A second, small model (EfficientDet Lite0, COCO classes)
+runs on the same frames a few times per second with only the "cell phone" class enabled. The
+flag is smoothed over about 2 s, then combined with gaze:
+
+- phone visible **and** eyes off the screen → **Using phone** (not excused)
+- phone visible but eyes on the screen → still attentive (a phone lying on the desk is fine)
+
+A second, cheaper signal is lighting: a screen held below the camera lights the chin from
+underneath, often bluish, unlike the room or the monitor. `src/vision/lighting.ts` compares a
+chin patch with a forehead patch against a baseline learned while the head is up. Head down
+**and** unusual glow from below also counts as phone use. Daylight washes this out.
+
+A phone held low, out of the camera frame, in a bright room is not detectable this way. It then looks like
+note-taking (head down), and is handled by the note-taking rule: excused while there are
+glances back at the screen, one gentle info after 4 min without any. Hand tracking could
+tighten this later (thumb-scrolling posture), at the cost of more CPU on the student's device.
 
 ## Deployment
 

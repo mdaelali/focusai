@@ -13,9 +13,9 @@ type Pose = Partial<Omit<FrameMeasurement, 't'>> | null
 
 function frame(t: number, p: Pose): FrameMeasurement {
   if (p === null) {
-    return { t, facePresent: false, faceCount: 0, quality: 0, yaw: 0, pitch: 0, roll: 0, eyeH: 0, eyeV: 0, eyesClosed: false, mouthOpen: 0, landmarks: null }
+    return { t, facePresent: false, faceCount: 0, quality: 0, yaw: 0, pitch: 0, roll: 0, eyeH: 0, eyeV: 0, eyesClosed: false, mouthOpen: 0, phoneVisible: false, glowBelow: 0, landmarks: null }
   }
-  return { t, facePresent: true, faceCount: 1, quality: 1, yaw: 0, pitch: 0, roll: 0, eyeH: 0, eyeV: 0, eyesClosed: false, mouthOpen: 0, landmarks: null, ...p }
+  return { t, facePresent: true, faceCount: 1, quality: 1, yaw: 0, pitch: 0, roll: 0, eyeH: 0, eyeV: 0, eyesClosed: false, mouthOpen: 0, phoneVisible: false, glowBelow: 0, landmarks: null, ...p }
 }
 
 const SEC = 1000
@@ -61,11 +61,20 @@ describe('attentive student', () => {
 })
 
 describe('dropped something and leaned down', () => {
-  it('is a brief interruption, excused, and returns to attentive without an alert', () => {
-    const r = run((t) => (t > 60 * SEC && t < 72 * SEC ? null : attentive), 3 * MIN)
+  it('under 5 s is a brief interruption, excused, and returns to attentive without an alert', () => {
+    const r = run((t) => (t > 60 * SEC && t < 64 * SEC ? null : attentive), 3 * MIN)
     const seen = r.states.map((s) => s.state)
     expect(seen).toContain('brief_interruption')
     expect(seen).not.toContain('stepped_away')
+    expect(r.last.state).toBe('attentive')
+    expect(r.alerts).toHaveLength(0)
+  })
+
+  it('over 5 s becomes "stepped away" (not excused) but still does not alert until the away threshold', () => {
+    const r = run((t) => (t > 60 * SEC && t < 70 * SEC ? null : attentive), 3 * MIN)
+    const away = r.states.find((s) => s.state === 'stepped_away')
+    expect(away).toBeDefined()
+    expect(away!.t).toBeLessThanOrEqual(60 * SEC + DEFAULT_POLICY.briefInterruptionMs + 1000)
     expect(r.last.state).toBe('attentive')
     expect(r.alerts).toHaveLength(0)
   })
@@ -143,6 +152,34 @@ describe('genuinely looking elsewhere', () => {
   it('a few seconds of glancing sideways does not change the state (hysteresis)', () => {
     const r = run((t) => (t > 60 * SEC && t < 62 * SEC ? lookingSideways : attentive), 2 * MIN)
     expect(r.states.map((s) => s.state)).toEqual(['no_data', 'attentive'])
+  })
+})
+
+describe('using a phone', () => {
+  it('phone in hand with eyes down is "using phone", not notes, and asks for a check-in after a minute', () => {
+    const r = run((t) => (t < 20 * SEC ? attentive : { ...headDown, phoneVisible: true }), 3 * MIN)
+    expect(r.last.state).toBe('using_phone')
+    expect(r.last.excused).toBe(false)
+    expect(r.alerts).toHaveLength(1)
+    expect(r.alerts[0].severity).toBe('check_in')
+    expect(r.alerts[0].t).toBeGreaterThanOrEqual(20 * SEC + DEFAULT_POLICY.phoneAlertMs)
+  })
+
+  it('head down with the face lit from below (screen glow) counts as phone use even if no phone is visible', () => {
+    const r = run((t) => (t < 20 * SEC ? attentive : { ...headDown, glowBelow: 0.8 }), 2 * MIN)
+    expect(r.last.state).toBe('using_phone')
+    expect(r.last.reason).toMatch(/lit from below/)
+  })
+
+  it('head down with normal lighting is still notes', () => {
+    const r = run((t) => (t < 20 * SEC ? attentive : { ...headDown, glowBelow: 0.2 }), 2 * MIN)
+    expect(r.last.state).toBe('taking_notes')
+  })
+
+  it('a phone on the desk while looking at the screen stays attentive', () => {
+    const r = run(() => ({ phoneVisible: true }), 2 * MIN)
+    expect(r.last.state).toBe('attentive')
+    expect(r.alerts).toHaveLength(0)
   })
 })
 

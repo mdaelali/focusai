@@ -1,4 +1,4 @@
-import type { Alert, BehaviorState, SelfStatus } from '../engagement/behavior'
+import type { Alert, BehaviorPolicy, BehaviorState, SelfStatus } from '../engagement/behavior'
 
 /**
  * What crosses the network between a participant and the host.
@@ -37,10 +37,24 @@ export interface LeaveMessage {
   ts: number
 }
 
-/** The host announces itself so participants resend their latest state. */
+/** What the host tells participants about the lesson. */
+export interface LessonInfo {
+  name: string
+  subject: string
+  durationMin: number
+  /** Wall-clock ms when the host opened the room. */
+  startedAt: number
+}
+
+/**
+ * The host announces itself so participants resend their latest state, and
+ * passes the lesson's alert thresholds so every device applies the same rules.
+ */
 export interface HostHello {
   kind: 'host'
   ts: number
+  lesson?: LessonInfo
+  policy?: Partial<BehaviorPolicy>
 }
 
 export type RoomMessage = ParticipantReport | AlertMessage | LeaveMessage | HostHello

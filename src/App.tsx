@@ -15,7 +15,7 @@ import { normaliseRoomCode } from './room/protocol'
 type Route =
   | { page: 'home' }
   | { page: 'lab' }
-  | { page: 'host'; room: string }
+  | { page: 'host'; room: string; preset: string | null }
   | { page: 'join'; room: string; name: string }
 
 function parse(hash: string): Route {
@@ -23,7 +23,7 @@ function parse(hash: string): Route {
   const [path, query = ''] = h.split('?')
   const parts = path.split('/').filter(Boolean)
   if (parts[0] === 'lab') return { page: 'lab' }
-  if (parts[0] === 'host' && parts[1]) return { page: 'host', room: normaliseRoomCode(parts[1]) }
+  if (parts[0] === 'host' && parts[1]) return { page: 'host', room: normaliseRoomCode(parts[1]), preset: new URLSearchParams(query).get('preset') }
   if (parts[0] === 'join' && parts[1]) {
     const name = new URLSearchParams(query).get('name')?.trim() ?? ''
     return { page: 'join', room: normaliseRoomCode(parts[1]), name }
@@ -43,7 +43,7 @@ export default function App() {
     case 'lab':
       return <Lab />
     case 'host':
-      return <Host room={route.room} />
+      return <Host room={route.room} presetId={route.preset} />
     case 'join':
       return route.name ? <Join room={route.room} name={route.name} /> : <NamePrompt room={route.room} />
     default:

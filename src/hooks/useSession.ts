@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FaceTracker } from '../vision/faceTracker'
+import { PhoneDetector } from '../vision/phoneDetector'
+import { LightingProbe } from '../vision/lighting'
 import type { Calibration, FrameMeasurement } from '../vision/types'
 import { DEFAULT_CALIBRATION } from '../vision/types'
 import {
@@ -56,6 +58,8 @@ const TIMELINE_INTERVAL_MS = 1000
 export function useSession() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const trackerRef = useRef<FaceTracker | null>(null)
+  const phoneRef = useRef<PhoneDetector | null>(null)
+  const lightRef = useRef<LightingProbe>(new LightingProbe())
   const streamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number>(0)
   const framesRef = useRef<FrameMeasurement[]>([])
@@ -118,6 +122,12 @@ export function useSession() {
       let m: FrameMeasurement
       try {
         m = tracker.measure(video, now)
+        m.phoneVisible = phoneRef.current?.sample(video, now) ?? false
+        if (m.facePresent) {
+          const cal = calibrationRef.current
+          const headUp = Math.abs(m.pitch - cal.pitch) < 10 && m.eyeV - cal.eyeV > -0.2
+          m.glowBelow = lightRef.current.sample(video, m.landmarks, headUp, now)
+        }
       } catch (e) {
         console.error(e)
         rafRef.current = requestAnimationFrame(loop)
@@ -213,6 +223,15 @@ export function useSession() {
       const tracker = trackerRef.current ?? new FaceTracker()
       trackerRef.current = tracker
       await tracker.init()
+      // The phone detector is optional: if its model fails to load we still run.
+      try {
+        const pd = phoneRef.current ?? new PhoneDetector()
+        await pd.init()
+        phoneRef.current = pd
+      } catch (e) {
+        console.warn('Phone detector unavailable:', e)
+        phoneRef.current = null
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
@@ -232,6 +251,7 @@ export function useSession() {
       fpsRef.current = { count: 0, since: performance.now(), value: 0 }
       startRef.current = performance.now()
       behaviorRef.current.reset(startRef.current)
+      lightRef.current.reset()
       behaviorSnapRef.current = null
       lastBehaviorRef.current = 0
       setAlerts([])
@@ -306,6 +326,7 @@ export function useSession() {
       cancelAnimationFrame(rafRef.current)
       streamRef.current?.getTracks().forEach((t) => t.stop())
       trackerRef.current?.close()
+      phoneRef.current?.close()
     }
   }, [])
 

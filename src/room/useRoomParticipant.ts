@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Alert, BehaviorSnapshot } from '../engagement/behavior'
-import { newParticipantId, type ParticipantReport } from './protocol'
+import { newParticipantId, type HostHello, type ParticipantReport } from './protocol'
 import { createTransport, type RoomTransport, type TransportKind } from './transport'
 
 const REPORT_INTERVAL_MS = 2000
@@ -9,13 +9,16 @@ const REPORT_INTERVAL_MS = 2000
  * Publishes the participant's current behaviour state to the room.
  * The caller passes the latest snapshot; this hook throttles and formats it.
  */
-export function useRoomParticipant(room: string, name: string) {
+export function useRoomParticipant(room: string, name: string, onHello?: (h: HostHello) => void) {
   const idRef = useRef<string>(newParticipantId())
   const transportRef = useRef<RoomTransport | null>(null)
   const latestRef = useRef<{ snap: BehaviorSnapshot | null; score: number | null; camera: boolean }>({ snap: null, score: null, camera: false })
   const lastSentRef = useRef(0)
   const [kind, setKind] = useState<TransportKind>('local')
   const [sentCount, setSentCount] = useState(0)
+  const [lesson, setLesson] = useState<HostHello['lesson'] | null>(null)
+  const onHelloRef = useRef(onHello)
+  onHelloRef.current = onHello
 
   const buildReport = (): ParticipantReport | null => {
     const { snap, score, camera } = latestRef.current
@@ -43,6 +46,8 @@ export function useRoomParticipant(room: string, name: string) {
     setKind(t.kind)
     const off = t.onMessage((m) => {
       if (m.kind === 'host') {
+        if (m.lesson) setLesson(m.lesson)
+        onHelloRef.current?.(m)
         const r = buildReport()
         if (r) t.send(r)
       }
@@ -77,5 +82,5 @@ export function useRoomParticipant(room: string, name: string) {
     transportRef.current?.send({ kind: 'alert', id: idRef.current, name, ts: Date.now(), alert: { ...alert, t: Math.round(alert.t + offset) } })
   }
 
-  return { id: idRef.current, kind, publish, sentCount }
+  return { id: idRef.current, kind, publish, sentCount, lesson }
 }

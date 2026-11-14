@@ -12,7 +12,9 @@ interface Props {
 
 export default function Join({ room, name }: Props) {
   const s = useSession()
-  const r = useRoomParticipant(room, name)
+  const r = useRoomParticipant(room, name, (h) => {
+    if (h.policy) s.setPolicy(h.policy)
+  })
   const [consented, setConsented] = useState(false)
   const running = s.status === 'running'
 
@@ -42,7 +44,10 @@ export default function Join({ room, name }: Props) {
               Room {room}
             </span>
           </h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">Joined as {name}. Keep this tab open next to your meeting.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            {r.lesson ? <span className="text-[var(--text)]">{r.lesson.name}</span> : 'Waiting for the host'}
+            {' · '}joined as {name}. Keep this tab open next to your meeting.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {running && s.live.behavior && <StateBadge state={s.live.behavior.state} />}

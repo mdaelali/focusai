@@ -59,6 +59,8 @@ export class FaceTracker {
         eyeV: 0,
         eyesClosed: false,
         mouthOpen: 0,
+        phoneVisible: false,
+        glowBelow: 0,
         landmarks: null,
       }
     }
@@ -92,6 +94,8 @@ export class FaceTracker {
       eyeV: eyes.eyeV,
       eyesClosed: eyes.eyesClosed,
       mouthOpen: eyes.mouthOpen,
+      phoneVisible: false,
+      glowBelow: 0,
       landmarks,
     }
   }

@@ -10,6 +10,7 @@ export function stateColor(state: BehaviorState): string {
       return 'var(--info)'
     case 'stepped_away':
     case 'distracted':
+    case 'using_phone':
     case 'drowsy':
       return 'var(--warn)'
     default:

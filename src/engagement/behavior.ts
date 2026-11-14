@@ -25,6 +25,7 @@ export type BehaviorState =
   | 'stepped_away'
   | 'drowsy'
   | 'distracted'
+  | 'using_phone'
   | 'no_data'
 
 /** A status the participant declares about themselves. Always trusted over the camera. */
@@ -38,6 +39,7 @@ export const STATE_LABEL: Record<BehaviorState, string> = {
   stepped_away: 'Stepped away',
   drowsy: 'Eyes closed',
   distracted: 'Looking elsewhere',
+  using_phone: 'Using phone',
   no_data: 'No camera data',
 }
 
@@ -68,6 +70,8 @@ export interface BehaviorPolicy {
   talkingAlertMs: number
   /** Looking elsewhere continuously for this long. */
   distractedAlertMs: number
+  /** Phone in hand for this long. */
+  phoneAlertMs: number
   /** Eyes closed continuously for this long. */
   drowsyAlertMs: number
   /** No usable camera data for this long (camera off, face unmeasurable). */
@@ -86,11 +90,12 @@ export interface BehaviorPolicy {
 
 export const DEFAULT_POLICY: BehaviorPolicy = {
   enterMs: 3_000,
-  briefInterruptionMs: 20_000,
+  briefInterruptionMs: 5_000,
   awayAlertMs: 3 * 60_000,
   notesNoGlanceAlertMs: 4 * 60_000,
   talkingAlertMs: 5 * 60_000,
   distractedAlertMs: 2 * 60_000,
+  phoneAlertMs: 60_000,
   drowsyAlertMs: 45_000,
   noDataInfoMs: 2 * 60_000,
   headDownDeg: 14,
@@ -135,6 +140,11 @@ export interface Evidence {
   eyesClosedRatio: number
   multipleFacesRatio: number
   onScreenRatio: number
+  phoneRatio: number
+  /** Share of present frames with the lower face lit from below (screen glow). */
+  glowRatio: number
+  /** No face in the most recent second of frames. */
+  absentNow: boolean
 }
 
 /**
@@ -169,7 +179,7 @@ export function extractEvidence(
   const n = frames.length
   const zero: Evidence = {
     presentRatio: 0, lookingDownRatio: 0, turnedAwayRatio: 0, talkRatio: 0,
-    eyesClosedRatio: 0, multipleFacesRatio: 0, onScreenRatio: 0,
+    eyesClosedRatio: 0, multipleFacesRatio: 0, onScreenRatio: 0, phoneRatio: 0, glowRatio: 0, absentNow: true,
   }
   if (n === 0) return zero
 
@@ -180,6 +190,8 @@ export function extractEvidence(
   let multi = 0
   let onScreen = 0
   let reliable = 0
+  let phone = 0
+  let glow = 0
   // Talking: the jaw opens and closes repeatedly. Count frame-to-frame changes
   // in jaw openness above a small step; chewing or yawning produce few.
   let mouthMoves = 0
@@ -193,6 +205,8 @@ export function extractEvidence(
     }
     present++
     if (f.faceCount > 1) multi++
+    if (f.phoneVisible) phone++
+    if (f.glowBelow >= 0.5) glow++
     if (f.quality < th.minQuality) continue
     reliable++
     const g = deriveGaze(f, cal, th)
@@ -217,6 +231,9 @@ export function extractEvidence(
     eyesClosedRatio: reliable ? closed / reliable : 0,
     multipleFacesRatio: present ? multi / present : 0,
     onScreenRatio: reliable ? onScreen / reliable : 0,
+    phoneRatio: present ? phone / present : 0,
+    glowRatio: present ? glow / present : 0,
+    absentNow: !frames.some((f) => f.facePresent && f.t >= frames[n - 1].t - 1000),
   }
 }
 
@@ -230,9 +247,13 @@ interface RawVerdict {
 export function classify(stats: WindowStats | null, ev: Evidence, policy: BehaviorPolicy): RawVerdict {
   if (!stats || stats.samples === 0) return { state: 'no_data', confidence: 1, reason: 'No frames from the camera' }
 
-  if (ev.presentRatio < 0.2) {
+  if (ev.absentNow) {
     // Timing (brief vs away) is decided by the tracker.
-    return { state: 'stepped_away', confidence: 1 - ev.presentRatio, reason: 'No face in view' }
+    return { state: 'stepped_away', confidence: 1, reason: 'No face in view' }
+  }
+  if (ev.presentRatio < 0.3) {
+    // Just came back: the window is still mostly empty. Hold a neutral verdict.
+    return { state: 'attentive', confidence: 0.3, reason: 'Back in view' }
   }
 
   if (stats.insufficient) {
@@ -248,6 +269,15 @@ export function classify(stats: WindowStats | null, ev: Evidence, policy: Behavi
   if (talking && facingAway) {
     const why = ev.multipleFacesRatio > 0.3 ? 'Another person in view and mouth moving' : 'Turned away and mouth moving'
     return { state: 'talking_to_someone', confidence: Math.min(1, ev.talkRatio + ev.turnedAwayRatio), reason: why }
+  }
+
+  // A phone in hand with the eyes off the lesson is phone use, not note-taking.
+  if (ev.phoneRatio > 0.4 && ev.onScreenRatio < 0.45) {
+    return { state: 'using_phone', confidence: ev.phoneRatio, reason: 'Phone in hand, eyes off the screen' }
+  }
+  // Head down and the chin lit from below in an unusual way: a screen below the camera.
+  if (ev.glowRatio > 0.6 && ev.lookingDownRatio > 0.5 && ev.onScreenRatio < 0.3) {
+    return { state: 'using_phone', confidence: Math.min(1, ev.glowRatio * 0.8), reason: 'Head down, face lit from below like a screen' }
   }
 
   if (ev.lookingDownRatio > 0.5 && ev.turnedAwayRatio < 0.4) {
@@ -345,8 +375,7 @@ export class BehaviorTracker {
     // Short absences are interruptions, not "away". Promote by elapsed time.
     let target = raw.state
     if (target === 'stepped_away') {
-      const inAbsence = this.state === 'brief_interruption' || this.state === 'stepped_away'
-      const absentFor = inAbsence ? t - this.since : 0
+      const absentFor = t - this.lastFaceAt
       target = absentFor >= this.policy.briefInterruptionMs ? 'stepped_away' : 'brief_interruption'
       if (this.state === 'brief_interruption' && target === 'stepped_away') {
         // Same episode, just older: keep `since` so the duration is honest.
@@ -420,6 +449,9 @@ export class BehaviorTracker {
         break
       case 'distracted':
         if (dur >= p.distractedAlertMs) a = this.alert(t, 'check_in', `Looking away from the lesson for ${mins(dur)}`)
+        break
+      case 'using_phone':
+        if (dur >= p.phoneAlertMs) a = this.alert(t, 'check_in', `Phone in hand for ${mins(dur)}`)
         break
       case 'drowsy':
         if (dur >= p.drowsyAlertMs) a = this.alert(t, 'check_in', `Eyes closed for ${Math.round(dur / 1000)} s`)
