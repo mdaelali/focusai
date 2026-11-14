@@ -4,6 +4,7 @@ import { useRoomHost, type RosterEntry } from '../room/useRoomHost'
 import { fmtDuration, StateBadge, stateColor } from '../components/StateBadge'
 import { useHostNotices } from '../room/useHostNotices'
 import { ClassOverview } from '../components/ClassOverview'
+import { LessonReview } from '../components/LessonReview'
 import { findPreset, markUsed, SENSITIVITY_LABEL, SENSITIVITY_POLICY, type LessonPreset } from '../lessons/presets'
 
 interface Props {
@@ -28,6 +29,7 @@ export default function Host({ room, presetId }: Props) {
   )
   const [now, setNow] = useState(Date.now())
   const [copied, setCopied] = useState(false)
+  const [reviewing, setReviewing] = useState(false)
   const n = useHostNotices(h.participants, h.alerts)
 
   const download = () => {
@@ -48,6 +50,15 @@ export default function Host({ room, presetId }: Props) {
     a2.download = `focusai-${room}-${stamp}.csv`
     a2.click()
     URL.revokeObjectURL(a2.href)
+    // And every student's episodes, one row each.
+    const rows = ['name,start,end,seconds,state,selfDeclared,reason']
+    for (const r of report.participants) for (const e of r.episodes) rows.push([r.name, e.start, e.end, e.seconds, e.state, e.selfDeclared, e.reason].map((v) => JSON.stringify(v ?? '')).join(','))
+    const b3 = new Blob([rows.join('\n')], { type: 'text/csv' })
+    const a3 = document.createElement('a')
+    a3.href = URL.createObjectURL(b3)
+    a3.download = `focusai-${room}-${stamp}-episodes.csv`
+    a3.click()
+    URL.revokeObjectURL(a3.href)
   }
 
   useEffect(() => {
@@ -140,12 +151,11 @@ export default function Host({ room, presetId }: Props) {
           </button>
           <button
             type="button"
-            onClick={download}
-            disabled={h.timeline.length === 0}
-            title="JSON and CSV with per-student time in each state and the class timeline"
-            className="cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--panel-2)] disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => setReviewing((v) => !v)}
+            title="Every student's timeline, episodes and alerts for this lesson"
+            className="btn-primary"
           >
-            Download lesson report
+            {reviewing ? 'Back to live view' : 'End lesson & review'}
           </button>
         </div>
       </header>
@@ -197,7 +207,18 @@ export default function Host({ room, presetId }: Props) {
         </div>
       )}
 
-      <main className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {reviewing && (
+        <LessonReview
+          students={h.students}
+          timeline={h.timeline}
+          startedAt={startedAt}
+          lessonName={preset?.name}
+          onBack={() => setReviewing(false)}
+          onDownload={download}
+        />
+      )}
+
+      <main className={reviewing ? 'hidden' : 'grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'}>
         <section className="flex flex-col gap-3">
           <ClassOverview participants={h.participants} timeline={h.timeline} />
           <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">

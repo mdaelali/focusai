@@ -62,6 +62,25 @@ export function useSession() {
   const lightRef = useRef<LightingProbe>(new LightingProbe())
   const streamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number>(0)
+  const timerRef = useRef<number>(0)
+
+  /**
+   * Schedule the next analysis step. Browsers pause requestAnimationFrame in
+   * hidden tabs, and students keep the meeting in front, so when the tab is
+   * hidden we fall back to a timer (throttled by the browser to about once a
+   * second, which is plenty for minute-scale decisions).
+   */
+  const schedule = (fn: () => void) => {
+    if (document.visibilityState === 'hidden') {
+      timerRef.current = window.setTimeout(fn, 250)
+    } else {
+      rafRef.current = requestAnimationFrame(fn)
+    }
+  }
+  const unschedule = () => {
+    cancelAnimationFrame(rafRef.current)
+    window.clearTimeout(timerRef.current)
+  }
   const framesRef = useRef<FrameMeasurement[]>([])
   const timelineRef = useRef<TimelinePoint[]>([])
   const startRef = useRef<number>(0)
@@ -130,7 +149,7 @@ export function useSession() {
         }
       } catch (e) {
         console.error(e)
-        rafRef.current = requestAnimationFrame(loop)
+        schedule(loop)
         return
       }
 
@@ -165,7 +184,10 @@ export function useSession() {
         f.since = now
       }
 
-      const stats = analyseWindow(frames, calibrationRef.current, weightsRef.current, thresholdsRef.current)
+      const th = document.visibilityState === 'hidden'
+        ? { ...thresholdsRef.current, minSamples: Math.min(thresholdsRef.current.minSamples, 5) }
+        : thresholdsRef.current
+      const stats = analyseWindow(frames, calibrationRef.current, weightsRef.current, th)
 
       // Behaviour layer runs once a second; it reasons over minutes, not frames.
       if (now - lastBehaviorRef.current >= 1000) {
@@ -209,7 +231,7 @@ export function useSession() {
         setLiveTimeline(timelineRef.current.slice())
       }
     }
-    rafRef.current = requestAnimationFrame(loop)
+    schedule(loop)
   }, [])
 
   const start = useCallback(async () => {
@@ -260,7 +282,7 @@ export function useSession() {
       lastVideoTimeRef.current = -1
 
       setStatus('running')
-      rafRef.current = requestAnimationFrame(loop)
+      schedule(loop)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(friendlyCameraError(msg))
@@ -270,7 +292,7 @@ export function useSession() {
   }, [loop])
 
   const stopStream = () => {
-    cancelAnimationFrame(rafRef.current)
+    unschedule()
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
@@ -323,7 +345,7 @@ export function useSession() {
 
   useEffect(() => {
     return () => {
-      cancelAnimationFrame(rafRef.current)
+      unschedule()
       streamRef.current?.getTracks().forEach((t) => t.stop())
       trackerRef.current?.close()
       phoneRef.current?.close()
