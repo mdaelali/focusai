@@ -59,10 +59,46 @@ export interface HostHello {
 
 export type RoomMessage = ParticipantReport | AlertMessage | LeaveMessage | HostHello
 
+const STATES = new Set(['attentive', 'taking_notes', 'talking_to_someone', 'brief_interruption', 'stepped_away', 'drowsy', 'distracted', 'using_phone', 'no_data'])
+const SELF = new Set(['none', 'notes', 'away', 'busy'])
+const str = (v: unknown, max: number) => typeof v === 'string' && v.length <= max
+const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v)
+
+/**
+ * Validate a message from the channel. Anyone who knows the room code can send
+ * on it, so every field is checked for type, allowed values and length before
+ * it reaches state or the screen.
+ */
 export function isRoomMessage(v: unknown): v is RoomMessage {
   if (!v || typeof v !== 'object') return false
-  const k = (v as { kind?: unknown }).kind
-  return k === 'report' || k === 'alert' || k === 'leave' || k === 'host'
+  const m = v as Record<string, unknown>
+  switch (m.kind) {
+    case 'report':
+      return str(m.id, 64) && str(m.name, 40) && num(m.ts) && num(m.since) &&
+        STATES.has(m.state as string) && (m.score === null || (num(m.score) && (m.score as number) >= 0 && (m.score as number) <= 100)) &&
+        SELF.has(m.selfStatus as string) && typeof m.excused === 'boolean' && str(m.reason, 120) && typeof m.camera === 'boolean'
+    case 'alert': {
+      const a = m.alert as Record<string, unknown> | undefined
+      return str(m.id, 64) && str(m.name, 40) && num(m.ts) && !!a && str(a.id, 64) && num(a.t) &&
+        STATES.has(a.state as string) && (a.severity === 'info' || a.severity === 'check_in') && str(a.message, 200)
+    }
+    case 'leave':
+      return str(m.id, 64) && num(m.ts)
+    case 'host': {
+      if (!num(m.ts)) return false
+      if (m.lesson !== undefined) {
+        const l = m.lesson as Record<string, unknown> | null
+        if (!l || !str(l.name, 80) || !str(l.subject, 40) || !num(l.durationMin) || !num(l.startedAt)) return false
+      }
+      if (m.policy !== undefined) {
+        const p = m.policy as Record<string, unknown> | null
+        if (!p || Object.keys(p).length > 20 || !Object.values(p).every(num)) return false
+      }
+      return true
+    }
+    default:
+      return false
+  }
 }
 
 /** Six characters, no ambiguous glyphs. */

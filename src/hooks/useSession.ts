@@ -64,22 +64,76 @@ export function useSession() {
   const rafRef = useRef<number>(0)
   const timerRef = useRef<number>(0)
 
-  /**
-   * Schedule the next analysis step. Browsers pause requestAnimationFrame in
-   * hidden tabs, and students keep the meeting in front, so when the tab is
-   * hidden we fall back to a timer (throttled by the browser to about once a
-   * second, which is plenty for minute-scale decisions).
+  const runningRef = useRef(false)
+  const loopRef = useRef<() => void>(() => {})
+  const workerRef = useRef<Worker | null>(null)
+  const lastTickRef = useRef(0)
+
+  /*
+   * Scheduling. Students keep the meeting window in front, so this tab is
+   * usually hidden. Browsers pause requestAnimationFrame in hidden tabs, and
+   * Chrome throttles the page's own timers to once a second, then to once a
+   * minute after five minutes ("intensive throttling"). A Web Worker's timer is
+   * only throttled to once a second, so while hidden the worker drives the
+   * loop; while visible, requestAnimationFrame does. The switch happens on
+   * visibilitychange, not on the next tick, because the next animation frame
+   * never arrives once the tab is hidden.
    */
+  const ensureWorker = () => {
+    if (workerRef.current) return workerRef.current
+    try {
+      const src = 'let t=null;onmessage=e=>{clearInterval(t);t=null;if(e.data==="start"){t=setInterval(()=>postMessage(0),400)}}'
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })))
+      // The worker ticks all session long. It only steps the loop when the
+      // animation-frame loop has stalled: hidden tab, occluded window, or a
+      // browser that throttles background frames while still reporting
+      // "visible" (Chrome does this for tabs behind another tab).
+      w.onmessage = () => {
+        if (runningRef.current && performance.now() - lastTickRef.current > 350) {
+          dbg().workerTicks++
+          loopRef.current()
+        }
+      }
+      workerRef.current = w
+      return w
+    } catch {
+      return null
+    }
+  }
+  // Tiny diagnostics surface for tests and support: window.__focusai
+  const dbg = () => {
+    const w = window as unknown as { __focusai?: { workerTicks: number; rafTicks: number; frames: number } }
+    w.__focusai ??= { workerTicks: 0, rafTicks: 0, frames: 0 }
+    return w.__focusai
+  }
   const schedule = (fn: () => void) => {
     if (document.visibilityState === 'hidden') {
-      timerRef.current = window.setTimeout(fn, 250)
-    } else {
-      rafRef.current = requestAnimationFrame(fn)
+      if (!ensureWorker()) timerRef.current = window.setTimeout(fn, 500) // last resort
+      return
     }
+    if (rafRef.current) return // one pending frame at a time
+    dbg().rafTicks++
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0
+      fn()
+    })
   }
   const unschedule = () => {
     cancelAnimationFrame(rafRef.current)
+    rafRef.current = 0
     window.clearTimeout(timerRef.current)
+    workerRef.current?.postMessage('stop')
+  }
+  const onVisibility = () => {
+    if (!runningRef.current) return
+    if (document.visibilityState === 'hidden') {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+      if (!ensureWorker()) timerRef.current = window.setTimeout(loopRef.current, 500)
+    } else {
+      window.clearTimeout(timerRef.current)
+      schedule(loopRef.current)
+    }
   }
   const framesRef = useRef<FrameMeasurement[]>([])
   const timelineRef = useRef<TimelinePoint[]>([])
@@ -135,9 +189,11 @@ export function useSession() {
     if (!video || !tracker || !tracker.ready) return
 
     const now = performance.now()
+    lastTickRef.current = now
     // Only analyse when a new video frame is available.
     if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
       lastVideoTimeRef.current = video.currentTime
+      dbg().frames++
       let m: FrameMeasurement
       try {
         m = tracker.measure(video, now)
@@ -184,8 +240,11 @@ export function useSession() {
         f.since = now
       }
 
-      const th = document.visibilityState === 'hidden'
-        ? { ...thresholdsRef.current, minSamples: Math.min(thresholdsRef.current.minSamples, 5) }
+      // Few frames arrive while the tab is hidden or throttled: relax the
+      // minimum sample count so a slow stream still yields a verdict.
+      const slow = document.visibilityState === 'hidden' || (f.value > 0 && f.value < 5)
+      const th = slow
+        ? { ...thresholdsRef.current, minSamples: Math.min(thresholdsRef.current.minSamples, 3) }
         : thresholdsRef.current
       const stats = analyseWindow(frames, calibrationRef.current, weightsRef.current, th)
 
@@ -233,6 +292,7 @@ export function useSession() {
     }
     schedule(loop)
   }, [])
+  loopRef.current = loop
 
   const start = useCallback(async () => {
     setError(null)
@@ -282,6 +342,10 @@ export function useSession() {
       lastVideoTimeRef.current = -1
 
       setStatus('running')
+      runningRef.current = true
+      document.addEventListener('visibilitychange', onVisibility)
+      lastTickRef.current = performance.now()
+      ensureWorker()?.postMessage('start')
       schedule(loop)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -292,6 +356,8 @@ export function useSession() {
   }, [loop])
 
   const stopStream = () => {
+    runningRef.current = false
+    document.removeEventListener('visibilitychange', onVisibility)
     unschedule()
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
@@ -345,7 +411,11 @@ export function useSession() {
 
   useEffect(() => {
     return () => {
+      runningRef.current = false
+      document.removeEventListener('visibilitychange', onVisibility)
       unschedule()
+      workerRef.current?.terminate()
+      workerRef.current = null
       streamRef.current?.getTracks().forEach((t) => t.stop())
       trackerRef.current?.close()
       phoneRef.current?.close()
