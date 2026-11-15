@@ -3,6 +3,7 @@ import Home from './pages/Home'
 import Lab from './pages/Lab'
 import Join from './pages/Join'
 import Host from './pages/Host'
+import Privacy from './pages/Privacy'
 import { normaliseRoomCode } from './room/protocol'
 
 /*
@@ -15,6 +16,7 @@ import { normaliseRoomCode } from './room/protocol'
 type Route =
   | { page: 'home' }
   | { page: 'lab' }
+  | { page: 'privacy' }
   | { page: 'host'; room: string; preset: string | null }
   | { page: 'join'; room: string; name: string }
 
@@ -23,6 +25,7 @@ function parse(hash: string): Route {
   const [path, query = ''] = h.split('?')
   const parts = path.split('/').filter(Boolean)
   if (parts[0] === 'lab') return { page: 'lab' }
+  if (parts[0] === 'privacy') return { page: 'privacy' }
   if (parts[0] === 'host' && parts[1]) return { page: 'host', room: normaliseRoomCode(parts[1]), preset: new URLSearchParams(query).get('preset') }
   if (parts[0] === 'join' && parts[1]) {
     const name = new URLSearchParams(query).get('name')?.trim() ?? ''
@@ -42,6 +45,8 @@ export default function App() {
   switch (route.page) {
     case 'lab':
       return <Lab />
+    case 'privacy':
+      return <Privacy />
     case 'host':
       return <Host room={route.room} presetId={route.preset} />
     case 'join':
@@ -74,7 +79,7 @@ function NamePrompt({ room }: { room: string }) {
   return (
     <div className="mx-auto flex min-h-full max-w-md flex-col justify-center gap-4 px-4 py-10">
       <h1 className="text-xl font-semibold">
-        Join room <span className="font-mono tracking-widest">{room}</span>
+        Join room <span className="font-mono tracking-widest">{room.length === 8 ? `${room.slice(0, 4)}-${room.slice(4)}` : room}</span>
       </h1>
       <form onSubmit={go} className="panel flex flex-col gap-3 p-5">
         <label className="text-sm text-[var(--muted)]" htmlFor="join-name">

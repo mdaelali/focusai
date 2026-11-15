@@ -83,7 +83,8 @@ during and after a lesson, with a consent script and good responses per state.
 
 ## Privacy, in one table
 
-What crosses the network from a student, every 2 seconds:
+What crosses the network from a student, whenever their state changes (with a heartbeat every
+10 seconds), sealed with end-to-end encryption that only the teacher's browser can open:
 
 | Field | Example |
 | --- | --- |
@@ -94,7 +95,12 @@ What crosses the network from a student, every 2 seconds:
 | reason | "Head down, facing the desk" |
 
 Never: frames, images, landmarks, raw angles, audio. Messages are relayed through Supabase
-Realtime and are not stored. Lesson presets live in the teacher's browser.
+Realtime as ciphertext and are not stored. Each lesson has its own key pair in the teacher's
+browser; the 8-character room code is the fingerprint of its public key, so students verify
+the host before sending, classmates with the code cannot read or forge anyone's status, and
+nobody else can open the dashboard. Students always see the word the teacher sees and get
+10 seconds to correct an accusatory one. Every teacher screen and report says
+**signals, not evidence**. Plain-language version: [myfocusai.app/#/privacy](https://myfocusai.app/#/privacy).
 
 ## Run it yourself
 

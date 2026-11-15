@@ -29,7 +29,7 @@ export type BehaviorState =
   | 'no_data'
 
 /** A status the participant declares about themselves. Always trusted over the camera. */
-export type SelfStatus = 'none' | 'notes' | 'away' | 'busy'
+export type SelfStatus = 'none' | 'notes' | 'away' | 'busy' | 'fine'
 
 export const STATE_LABEL: Record<BehaviorState, string> = {
   attentive: 'Attentive',
@@ -37,9 +37,9 @@ export const STATE_LABEL: Record<BehaviorState, string> = {
   talking_to_someone: 'Talking to someone',
   brief_interruption: 'Brief interruption',
   stepped_away: 'Stepped away',
-  drowsy: 'Eyes closed',
+  drowsy: 'Eyes closing',
   distracted: 'Looking elsewhere',
-  using_phone: 'Using phone',
+  using_phone: 'May be on phone',
   no_data: 'No camera data',
 }
 
@@ -48,6 +48,7 @@ export const SELF_STATUS_LABEL: Record<SelfStatus, string> = {
   notes: 'Taking notes',
   away: 'Stepped away',
   busy: 'Interrupted',
+  fine: 'Says they are fine',
 }
 
 /** States that are treated as normal life, not as disengagement. */

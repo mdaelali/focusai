@@ -32,6 +32,7 @@ export function LessonReview({ students, timeline, startedAt, lessonName, onBack
             {fmtDuration(span)} · {students.length} student{students.length === 1 ? '' : 's'}
             {classAvg !== null && Number.isFinite(classAvg) && <> · class with you or busy {classAvg}% of the time</>}
           </div>
+          <div className="mt-1 text-xs" style={{ color: 'var(--warn)' }}>Signals, not evidence. Each status is a few seconds of head and eye direction, shown to the student as it happened. Not for grading or discipline.</div>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onBack} className="btn-ghost">

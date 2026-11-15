@@ -5,7 +5,8 @@ import { fmtDuration, StateBadge, stateColor } from '../components/StateBadge'
 import { useHostNotices } from '../room/useHostNotices'
 import { ClassOverview } from '../components/ClassOverview'
 import { LessonReview } from '../components/LessonReview'
-import { findPreset, markUsed, SENSITIVITY_LABEL, SENSITIVITY_POLICY, type LessonPreset } from '../lessons/presets'
+import { ensureKeys, findPreset, findPresetByRoom, markUsed, SENSITIVITY_LABEL, SENSITIVITY_POLICY, upsertPreset, type LessonPreset } from '../lessons/presets'
+import { formatRoomCode } from '../room/crypto'
 import { JoinQr } from '../components/JoinQr'
 import { holdWakeLock, notificationsPossible } from '../lib/device'
 
@@ -15,19 +16,36 @@ interface Props {
 }
 
 export default function Host({ room, presetId }: Props) {
-  const [preset] = useState<LessonPreset | null>(() => (presetId ? findPreset(presetId) : null))
+  // The dashboard needs the lesson's private key, which lives only in the
+  // browser that created the lesson. Without it there is nothing to decrypt.
+  const [preset, setPreset] = useState<LessonPreset | null | 'missing'>(null)
   const [startedAt] = useState(() => Date.now())
   useEffect(() => {
-    if (preset) markUsed(preset.id)
-  }, [preset])
+    const found = (presetId ? findPreset(presetId) : null) ?? findPresetByRoom(room)
+    if (!found) {
+      setPreset('missing')
+      return
+    }
+    void ensureKeys(found).then((p) => {
+      if (p !== found) upsertPreset(p)
+      if (p.roomCode !== room) {
+        location.hash = `#/host/${p.roomCode}?preset=${p.id}`
+        return
+      }
+      markUsed(p.id)
+      setPreset(p)
+    })
+  }, [presetId, room])
+  const live = preset && preset !== 'missing' ? preset : null
   const h = useRoomHost(
     room,
-    preset
+    live
       ? {
-          lesson: { name: preset.name, subject: preset.subject, durationMin: preset.durationMin, startedAt },
-          policy: SENSITIVITY_POLICY[preset.sensitivity],
+          lesson: { name: live.name, subject: live.subject, durationMin: live.durationMin, startedAt },
+          policy: SENSITIVITY_POLICY[live.sensitivity],
         }
       : {},
+    live?.hostKeys ?? null,
   )
   const [now, setNow] = useState(Date.now())
   const [copied, setCopied] = useState(false)
@@ -74,18 +92,18 @@ export default function Host({ room, presetId }: Props) {
 
   const unseen = h.alerts.filter((a) => !a.seen)
   useEffect(() => {
-    const base = preset ? `${preset.name} · FocusAI` : 'FocusAI host'
+    const base = live ? `${live.name} · FocusAI` : 'FocusAI host'
     document.title = unseen.length ? `(${unseen.length}) ${base}` : base
-  }, [unseen.length, preset])
+  }, [unseen.length, live])
 
   const elapsedMin = (now - startedAt) / 60_000
-  const lessonPct = preset ? Math.min(100, Math.round((elapsedMin / preset.durationMin) * 100)) : null
-  const remainingMin = preset ? Math.max(0, Math.ceil(preset.durationMin - elapsedMin)) : null
+  const lessonPct = live ? Math.min(100, Math.round((elapsedMin / live.durationMin) * 100)) : null
+  const remainingMin = live ? Math.max(0, Math.ceil(live.durationMin - elapsedMin)) : null
   // Break reminder: a banner for 3 minutes each time a break interval passes.
-  const breakDue = preset && preset.breakEveryMin > 0 && elapsedMin >= preset.breakEveryMin
-    ? elapsedMin % preset.breakEveryMin < 3
+  const breakDue = live && live.breakEveryMin > 0 && elapsedMin >= live.breakEveryMin
+    ? elapsedMin % live.breakEveryMin < 3
     : false
-  const lessonOver = preset ? elapsedMin >= preset.durationMin : false
+  const lessonOver = live ? elapsedMin >= live.durationMin : false
 
   const joinLink = `${location.origin}${location.pathname}#/join/${room}`
   const copy = async () => {
@@ -106,7 +124,25 @@ export default function Host({ room, presetId }: Props) {
 
   const needsCheckIn = h.participants.filter((p) => !p.left && (p.stale || !p.camera || (!p.excused && (p.state === 'stepped_away' || p.state === 'distracted' || p.state === 'drowsy' || p.state === 'using_phone'))))
   const checkInLabel = (p: RosterEntry) =>
-    p.stale ? `no updates for ${fmtDuration(now - p.lastSeen)}` : !p.camera ? `camera off for ${fmtDuration(now - p.since)}` : `${STATE_LABEL[p.state].toLowerCase()} for ${fmtDuration(now - p.since)}`
+    p.stale ? `connection lost ${fmtDuration(now - p.lastSeen)} ago` : !p.camera ? `camera off for ${fmtDuration(now - p.since)}` : `${STATE_LABEL[p.state].toLowerCase()} for ${fmtDuration(now - p.since)}`
+
+  if (preset === 'missing') {
+    return (
+      <div className="mx-auto flex min-h-full max-w-lg flex-col justify-center gap-4 px-4 py-10">
+        <div className="panel flex flex-col gap-3 p-6">
+          <h1 className="text-xl font-semibold tracking-tight">This room's key is not on this device</h1>
+          <p className="text-sm text-[var(--muted)]">
+            Room <span className="font-mono tracking-widest text-[var(--text)]">{formatRoomCode(room)}</span> belongs to a lesson whose key lives in the browser
+            that created it. Students' statuses are encrypted to that key, so only that browser can open this dashboard. Open FocusAI
+            where you created the lesson, or create a new lesson here.
+          </p>
+          <a href="#/" className="btn-primary self-start">
+            Go to my lessons
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-4 py-6">
@@ -117,20 +153,22 @@ export default function Host({ room, presetId }: Props) {
               Focus<span style={{ color: 'var(--accent)' }}>AI</span>
             </a>
             <span className="ml-3 rounded-md border border-[var(--border)] px-2 py-0.5 align-middle text-[11px] font-medium text-[var(--muted)]">
-              {preset ? preset.subject || 'Lesson' : 'Host'}
+              {live ? live.subject || 'Lesson' : 'Host'}
             </span>
           </h1>
-          {preset && <div className="mt-1 text-lg font-medium">{preset.name}</div>}
+          {live && <div className="mt-1 text-lg font-medium">{live.name}</div>}
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Room code <span className="font-mono text-base font-semibold tracking-widest text-[var(--text)]">{room}</span>
-            {preset && (
+            Room code <span className="font-mono text-base font-semibold tracking-widest text-[var(--text)]">{formatRoomCode(room)}</span>
+            {live && (
               <>
                 <span className="mx-2">·</span>
-                {preset.durationMin} min · {SENSITIVITY_LABEL[preset.sensitivity].toLowerCase()} alerts
+                {live.durationMin} min · {SENSITIVITY_LABEL[live.sensitivity].toLowerCase()} alerts
               </>
             )}
             <span className="mx-2">·</span>
             {h.kind === 'supabase' ? 'students can join from any device' : 'demo mode: only tabs in this browser can join'}
+            <span className="mx-2">·</span>
+            end-to-end encrypted to this browser
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -253,14 +291,14 @@ export default function Host({ room, presetId }: Props) {
         </div>
       )}
 
-      {preset && (
+      {live && (
         <div className="panel flex flex-col gap-2 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="tabular-nums">
               <span className="font-medium">{fmtDuration(now - startedAt)}</span>
               <span className="text-[var(--muted)]"> elapsed</span>
             </span>
-            <span className="tabular-nums text-[var(--muted)]">{lessonOver ? 'Planned time is up' : `${remainingMin} min left of ${preset.durationMin}`}</span>
+            <span className="tabular-nums text-[var(--muted)]">{lessonOver ? 'Planned time is up' : `${remainingMin} min left of ${live.durationMin}`}</span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--panel-2)]">
             <div className="h-full rounded-full" style={{ width: `${lessonPct}%`, background: lessonOver ? 'var(--warn)' : 'var(--accent)', transition: 'width 1s linear' }} />
@@ -268,10 +306,10 @@ export default function Host({ room, presetId }: Props) {
           {breakDue && (
             <div className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--info)', background: 'color-mix(in srgb, var(--info) 10%, transparent)' }}>
               <span className="font-medium">Break time.</span>{' '}
-              <span className="text-[var(--muted)]">You asked to be reminded every {preset.breakEveryMin} minutes.</span>
+              <span className="text-[var(--muted)]">You asked to be reminded every {live.breakEveryMin} minutes.</span>
             </div>
           )}
-          {preset.notes && <div className="whitespace-pre-wrap text-xs text-[var(--muted)]">{preset.notes}</div>}
+          {live.notes && <div className="whitespace-pre-wrap text-xs text-[var(--muted)]">{live.notes}</div>}
         </div>
       )}
 
@@ -280,7 +318,7 @@ export default function Host({ room, presetId }: Props) {
           students={h.students}
           timeline={h.timeline}
           startedAt={startedAt}
-          lessonName={preset?.name}
+          lessonName={live?.name}
           onBack={() => setReviewing(false)}
           onDownload={download}
         />
@@ -291,6 +329,7 @@ export default function Host({ room, presetId }: Props) {
           <ClassOverview participants={h.participants} timeline={h.timeline} />
           <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
             <span className="font-medium text-[var(--text)]">{h.participants.length} participant{h.participants.length === 1 ? '' : 's'}</span>
+            <span className="rounded-md border border-[var(--border)] px-1.5 py-0.5 text-[11px]" title="A status is a few seconds of head and eye direction. Students see the same word you do and can correct it.">signals, not evidence</span>
             {(Object.keys(counts) as BehaviorState[]).map((st) => (
               <span key={st} className="inline-flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: stateColor(st) }} />
@@ -311,9 +350,11 @@ export default function Host({ room, presetId }: Props) {
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {h.participants.map((p) => (
-                <ParticipantCard key={p.id} p={p} now={now} />
-              ))}
+              {[...h.participants]
+                .sort((a, b) => Number(a.left) - Number(b.left) || Number(needsCheckIn.includes(b)) - Number(needsCheckIn.includes(a)) || a.name.localeCompare(b.name))
+                .map((p) => (
+                  <ParticipantCard key={p.id} p={p} now={now} />
+                ))}
             </div>
           )}
         </section>
@@ -431,7 +472,7 @@ function ParticipantCard({ p, now }: { p: RosterEntry; now: number }) {
         <div className="min-w-0">
           <div className="truncate font-medium">{p.name}</div>
           <div className="text-[11px]" style={{ color: p.stale || !p.camera ? 'var(--warn)' : 'var(--muted)' }}>
-            {p.stale ? `No update for ${fmtDuration(now - p.lastSeen)}` : p.camera ? 'Sharing' : `Camera off for ${fmtDuration(now - p.since)}`}
+            {p.stale ? `Connection lost ${fmtDuration(now - p.lastSeen)} ago` : p.camera ? 'Sharing' : `Camera off for ${fmtDuration(now - p.since)}`}
           </div>
         </div>
         <span className="text-xl font-semibold tabular-nums" style={{ color: attention === null ? 'var(--muted)' : color }}>

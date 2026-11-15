@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EXCUSED_STATES, STATE_LABEL, type BehaviorState, type SelfStatus } from '../engagement/behavior'
-import type { AlertMessage, HostHello, ParticipantReport } from './protocol'
+import { isParticipantMessage, type AlertMessage, type HostHello, type ParticipantMessage, type ParticipantReport } from './protocol'
 import { createTransport, type RoomTransport, type TransportKind } from './transport'
+import { deriveRoomKey, open, participantIdFromPublicKey, sealAad, type KeyPairJwk } from './crypto'
 
 export interface RosterEntry extends ParticipantReport {
   /** Wall-clock ms of the last message from this participant. */
@@ -57,11 +58,12 @@ export interface ParticipantTotals {
   alertLog: { ts: number; state: BehaviorState; severity: string; message: string }[]
 }
 
-const STALE_MS = 15_000
+/** Participants heartbeat every 10 s; silence beyond this is a lost connection. */
+const STALE_MS = 25_000
 const DROP_MS = 10 * 60_000
 const CLASS_SAMPLE_MS = 10_000
-/** Two reports are normally 2 s apart; a gap longer than this is not attributed to the old state. */
-const MAX_ATTRIBUTE_MS = 10_000
+/** Reports are at most 10 s apart; a gap longer than this is not attributed to the old state. */
+const MAX_ATTRIBUTE_MS = 15_000
 
 const WARN_STATES: ReadonlySet<BehaviorState> = new Set<BehaviorState>(['stepped_away', 'distracted', 'using_phone', 'drowsy'])
 
@@ -78,7 +80,7 @@ export interface HostOptions {
   policy?: HostHello['policy']
 }
 
-export function useRoomHost(room: string, options: HostOptions = {}) {
+export function useRoomHost(room: string, options: HostOptions = {}, keys: KeyPairJwk | null = null) {
   const transportRef = useRef<RoomTransport | null>(null)
   const [kind, setKind] = useState<TransportKind>('local')
   const [roster, setRoster] = useState<Map<string, RosterEntry>>(() => new Map())
@@ -93,9 +95,13 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
   optionsRef.current = options
 
   useEffect(() => {
+    if (!keys) return
     const t = createTransport(room)
     transportRef.current = t
     setKind(t.kind)
+    const keyCache = new Map<string, Promise<CryptoKey>>()
+    const idCache = new Map<string, Promise<string>>()
+    let lastHello = 0
     // Alerts the host raises itself about presence: camera off, left, silent.
     let seq = 0
     const hostAlert = (who: { id: string; name: string }, severity: 'info' | 'check_in', state: BehaviorState, message: string) => {
@@ -109,12 +115,12 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
     }
 
     const hadCamera = new Set<string>()
-    const off = t.onMessage((m) => {
+    const handle = (m: ParticipantMessage) => {
       const now = Date.now()
       if (m.kind === 'report') {
         // Attribute time since the previous report to the previous state.
         const prev = rosterRef.current.get(m.id)
-        if (!prev) t.send(hello())
+        if (!prev) sayHello()
         if (prev?.left) hostAlert(m, 'info', m.state, 'Rejoined the session')
         else if (prev && prev.camera && !m.camera) hostAlert(m, 'check_in', 'no_data', m.reason && m.reason !== 'Camera off' ? m.reason : 'Turned the camera off')
         else if (prev && !prev.camera && m.camera && hadCamera.has(m.id)) hostAlert(m, 'info', m.state, 'Camera is on again')
@@ -168,9 +174,43 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
           })
         }
       }
+    }
+
+    const hello = (): HostHello => ({ kind: 'host', ts: Date.now(), pub: keys.pub, lesson: optionsRef.current.lesson, policy: optionsRef.current.policy })
+    const sayHello = () => {
+      const now = Date.now()
+      if (now - lastHello < 1000) return // a whole class knocking at once gets one answer
+      lastHello = now
+      t.send(hello())
+    }
+
+    const off = t.onMessage((m) => {
+      if (m.kind === 'knock') {
+        sayHello()
+        return
+      }
+      if (m.kind !== 'sealed') return
+      void (async () => {
+        // The sender's id must be the fingerprint of the key the message was
+        // sealed with. A classmate cannot produce Alice's id without Alice's key.
+        let idp = idCache.get(m.pub)
+        if (!idp) {
+          idp = participantIdFromPublicKey(m.pub)
+          idCache.set(m.pub, idp)
+        }
+        if ((await idp) !== m.id) return
+        let kp = keyCache.get(m.pub)
+        if (!kp) {
+          kp = deriveRoomKey(keys.priv, m.pub, room)
+          keyCache.set(m.pub, kp)
+        }
+        const inner = await open(await kp, { iv: m.iv, ct: m.ct }, sealAad(room, m.id))
+        if (!isParticipantMessage(inner) || inner.id !== m.id) return
+        if (transportRef.current !== t) return
+        handle(inner)
+      })()
     })
-    const hello = (): HostHello => ({ kind: 'host', ts: Date.now(), lesson: optionsRef.current.lesson, policy: optionsRef.current.policy })
-    t.send(hello())
+    sayHello()
     const helloTimer = window.setInterval(() => t.send(hello()), 30_000)
 
     const staleTimer = window.setInterval(() => {
@@ -185,7 +225,7 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
           const stale = now - e.lastSeen > STALE_MS
           if (stale !== e.stale) {
             updates.set(id, { ...e, stale })
-            if (stale) hostAlert(e, 'check_in', 'no_data', 'Stopped sending updates: tab closed, computer asleep or offline')
+            if (stale) hostAlert(e, 'check_in', 'no_data', 'Connection lost: tab closed, computer asleep or offline')
           }
         }
       }
@@ -216,7 +256,8 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
       t.close()
       transportRef.current = null
     }
-  }, [room])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, keys?.pub])
 
   const participants = useMemo(
     () => [...roster.values()].sort((a, b) => Number(a.left) - Number(b.left) || a.name.localeCompare(b.name)),
@@ -274,7 +315,7 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
       participants: people,
       classTimeline: timeline.map((s) => ({ minute: s.min, participants: s.total, attentive: s.attentive, normalActivity: s.excused, needsAttention: s.warn, noData: s.noData, okPct: s.okPct })),
       alerts: alerts.map((a) => ({ time: new Date(a.ts).toISOString(), name: a.name, state: STATE_LABEL[a.alert.state], severity: a.alert.severity, message: a.alert.message })).reverse(),
-      note: 'States describe where the head and eyes were pointed. They say nothing about understanding and must not be used for grading.',
+      note: 'Signals, not evidence. States describe where a head and eyes were pointed for a few seconds at a time. They say nothing about understanding, must not be used for grading or discipline, and were shown to each student live while they were recorded.',
     }
   }, [room, timeline, alerts])
 

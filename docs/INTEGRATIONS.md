@@ -118,7 +118,7 @@ other.
 
 Hardening for a real deployment (not needed for a pilot):
 
-- Turn on Realtime authorization (private channels) so only people with a room token can
+- (Already covered by the client-side end-to-end encryption; optional extra.) Turn on Realtime authorization (private channels) so only people with a room token can
   subscribe, and issue the token from a tiny edge function when a host creates a room.
 - Rate limit broadcasts per connection in the Supabase dashboard.
 

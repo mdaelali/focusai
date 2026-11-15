@@ -91,7 +91,7 @@ class SupabaseTransport implements RoomTransport {
   send(m: RoomMessage): void {
     if (!this.ready) {
       // Keep only the newest report per sender while connecting.
-      this.queue = this.queue.filter((x) => !(x.kind === 'report' && m.kind === 'report' && x.id === m.id))
+      this.queue = this.queue.filter((x) => !(x.kind === 'sealed' && m.kind === 'sealed' && x.id === m.id))
       this.queue.push(m)
       return
     }

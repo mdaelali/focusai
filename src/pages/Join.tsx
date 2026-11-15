@@ -5,6 +5,12 @@ import { WebcamView } from '../components/WebcamView'
 import { BehaviorPanel } from '../components/BehaviorPanel'
 import { StateBadge } from '../components/StateBadge'
 import { holdWakeLock, isPhoneOrTablet } from '../lib/device'
+import { formatRoomCode } from '../room/crypto'
+import { STATE_LABEL, type BehaviorSnapshot, type BehaviorState } from '../engagement/behavior'
+
+/** States that accuse. The student gets a moment to answer before the teacher sees them. */
+const GRACE_STATES: ReadonlySet<BehaviorState> = new Set<BehaviorState>(['using_phone', 'drowsy', 'distracted'])
+const GRACE_MS = 10_000
 
 interface Props {
   room: string
@@ -22,6 +28,19 @@ export default function Join({ room, name }: Props) {
   // Track that explicitly so the host hears "switched to another app", not silence.
   const [inBackground, setInBackground] = useState(false)
   const running = s.status === 'running'
+  const [, forceTick] = useState(0)
+
+  // Grace: while an accusatory state is younger than GRACE_MS and the student
+  // has not said anything, the teacher sees "brief interruption" instead.
+  const snap = s.live.behavior
+  const graceLeftMs = snap && GRACE_STATES.has(snap.state) && snap.selfStatus === 'none' ? Math.max(0, GRACE_MS - (performance.now() - snap.since)) : 0
+  const inGrace = running && graceLeftMs > 0
+  useEffect(() => {
+    if (!inGrace) return
+    const t = window.setInterval(() => forceTick((n) => n + 1), 500)
+    return () => window.clearInterval(t)
+  }, [inGrace])
+  const shared: BehaviorSnapshot | null = inGrace && snap ? { ...snap, state: 'brief_interruption', excused: true, reason: 'Checking with the student' } : snap
 
   useEffect(() => {
     if (!phone) return
@@ -41,11 +60,11 @@ export default function Join({ room, name }: Props) {
     const stalled = running && s.live.cameraStalled
     const paused = running && (stalled || inBackground)
     const note = inBackground ? 'Switched to another app on their phone' : stalled ? 'Camera is not delivering frames' : null
-    r.publish(s.live.behavior, s.live.window?.score ?? null, running && !paused, note)
+    r.publish(shared, s.live.window?.score ?? null, running && !paused, note)
     // Backgrounded phones suspend timers almost immediately: send right now.
     if (inBackground) r.flush()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.live.behavior, s.live.window?.score, running, s.live.cameraStalled, inBackground])
+  }, [shared, s.live.window?.score, running, s.live.cameraStalled, inBackground])
 
   const start = () => {
     setConsented(true)
@@ -67,7 +86,7 @@ export default function Join({ room, name }: Props) {
             <h1 className="text-xl font-semibold tracking-tight">
               Focus<span style={{ color: 'var(--accent)' }}>AI</span>
             </h1>
-            <span className="rounded-md border border-[var(--border)] px-2 py-0.5 font-mono text-[11px] tracking-widest text-[var(--muted)]">{room}</span>
+            <span className="rounded-md border border-[var(--border)] px-2 py-0.5 font-mono text-[11px] tracking-widest text-[var(--muted)]">{formatRoomCode(room)}</span>
           </div>
           <p className="mt-1 text-sm text-[var(--muted)]">
             {r.lesson ? <span className="text-[var(--text)]">{r.lesson.name}</span> : 'Waiting for the host'}
@@ -80,12 +99,45 @@ export default function Join({ room, name }: Props) {
               Camera is not delivering frames
             </span>
           )}
-          {running && !s.live.cameraStalled && s.live.behavior && <StateBadge state={s.live.behavior.state} />}
+          {running && !s.live.cameraStalled && shared && <StateBadge state={shared.state} />}
           <button type="button" onClick={leave} className="btn-ghost">
             Leave
           </button>
         </div>
       </header>
+
+      {r.link === 'untrusted' && (
+        <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--bad)', color: 'var(--bad)' }}>
+          Someone is answering on this room code, but their key does not match it. Nothing is being sent. Check the code with your teacher.
+        </div>
+      )}
+      {running && r.link === 'connecting' && (
+        <div className="rounded-xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">
+          Waiting for your teacher's room to answer. Nothing is sent until their key is verified.
+        </div>
+      )}
+
+      {inGrace && snap && (
+        <div className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 10%, transparent)' }} role="alert">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm">
+              <span className="font-medium">The camera reads "{STATE_LABEL[snap.state]}".</span>{' '}
+              <span className="text-[var(--muted)]">Your teacher will see it in {Math.ceil(graceLeftMs / 1000)} s unless you say otherwise.</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => s.setSelfStatus('fine')} className="btn-primary" style={{ minHeight: '2.25rem', padding: '0.4rem 0.9rem' }}>
+                I'm fine
+              </button>
+              <button type="button" onClick={() => s.setSelfStatus('notes')} className="btn-ghost" style={{ minHeight: '2.25rem', padding: '0.4rem 0.9rem' }}>
+                Taking notes
+              </button>
+              <button type="button" onClick={() => s.setSelfStatus('away')} className="btn-ghost" style={{ minHeight: '2.25rem', padding: '0.4rem 0.9rem' }}>
+                Stepping away
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {s.error && (
         <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--bad)', color: 'var(--bad)' }}>
@@ -107,6 +159,8 @@ export default function Join({ room, name }: Props) {
             </Point>
             <Point>Writing notes, picking something up, or talking to someone who walked in are treated as normal.</Point>
             <Point>You can mark yourself as busy or away at any time, and stop sharing whenever you like.</Point>
+            <Point>Everything you send is encrypted to your teacher's key. Classmates with the room code cannot read it or pretend to be you.</Point>
+            <Point>You always see the same word your teacher sees, and you get 10 seconds to correct it before it is shown.</Point>
           </ul>
           {phone && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-4 text-sm">
@@ -151,7 +205,9 @@ export default function Join({ room, name }: Props) {
             <div className="mb-1 font-medium text-[var(--text)]">Sharing</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
               <span>Channel</span>
-              <span>{r.kind === 'supabase' ? 'Realtime' : 'This browser only'}</span>
+              <span>{r.kind === 'supabase' ? 'Realtime, encrypted to your teacher' : 'This browser only, encrypted'}</span>
+              <span>Host</span>
+              <span>{r.link === 'verified' ? 'Verified' : r.link === 'untrusted' ? 'Not verified' : 'Waiting'}</span>
               <span>Updates sent</span>
               <span>{r.sentCount}</span>
               <span>Engagement estimate</span>

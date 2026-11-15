@@ -117,3 +117,18 @@ on Android work after you allow them. On iPhone and iPad, notifications only wor
 on the home screen: tap Share, then **Add to Home Screen**, open it from there, then allow
 notifications. A phone browser that is put in the background stops receiving updates, so keep
 the FocusAI screen open while teaching.
+
+## What students see, and what a status means
+
+Students see exactly the word you see, at the same moment. When the camera reads something that
+could be taken the wrong way ("may be on phone", "eyes closing", "looking elsewhere"), the student
+gets 10 seconds to tap "I'm fine", "taking notes" or "stepping away" before you see anything; until
+then your card says "brief interruption". What a student declares always wins over the camera.
+
+Treat every status as a signal, never as evidence. It is a few seconds of head and eye direction,
+it is sometimes wrong, and it says nothing about understanding. Use it to change pace or check in
+with the class, not to grade or discipline anyone. Reports carry the same note.
+
+Rooms are encrypted end to end to the browser you created the lesson in. The 8-character room code
+(shown as XXXX-XXXX) is a fingerprint of that lesson's key, so only that browser can open the
+dashboard. If you switch computers, create the lesson again there and share the new code.

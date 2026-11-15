@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { normaliseRoomCode } from '../room/protocol'
 import { transportAvailable } from '../room/transport'
 import { StateBadge } from '../components/StateBadge'
+import { formatRoomCode } from '../room/crypto'
 import {
+  ensureKeys,
   loadPresets,
+  migratePresets,
   newPreset,
   removePreset,
   SENSITIVITY_HINT,
@@ -30,7 +33,10 @@ export default function Home() {
             How it works
           </a>
           <a href="#/lab" className="hidden rounded-lg px-3 py-2 hover:text-[var(--text)] sm:block">
-            Solo lab
+            Focus on your own
+          </a>
+          <a href="#/privacy" className="rounded-lg px-3 py-2 hover:text-[var(--text)]">
+            Privacy
           </a>
           <a href="https://github.com/mdaelali/focusai" target="_blank" rel="noreferrer" className="rounded-lg px-3 py-2 hover:text-[var(--text)]">
             GitHub
@@ -93,7 +99,7 @@ export default function Home() {
           <a href="https://alihasanli.com" target="_blank" rel="noreferrer" className="text-[var(--text)] hover:underline">
             Ali Hasanli
           </a>{' '}
-          · MIT licence
+          · MIT licence · <a href="#/privacy" className="hover:underline">Privacy</a> · Statuses are signals, not evidence
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="live-dot" style={{ background: transport === 'supabase' ? 'var(--accent)' : 'var(--warn)' }} />
@@ -183,6 +189,10 @@ function LivePreview() {
 function TeacherPanel() {
   const [presets, setPresets] = useState<LessonPreset[]>(() => loadPresets().sort((a, b) => b.lastUsedAt - a.lastUsedAt))
   const [editing, setEditing] = useState<LessonPreset | null>(() => (loadPresets().length === 0 ? newPreset() : null))
+  // Lessons saved before rooms were encrypted get a key pair (and a new code) once.
+  useEffect(() => {
+    void migratePresets().then((list) => setPresets(list.sort((a, b) => b.lastUsedAt - a.lastUsedAt)))
+  }, [])
 
   const start = async (p: LessonPreset) => {
     // Ask for desktop notifications on this click: browsers only allow the
@@ -194,8 +204,9 @@ function TeacherPanel() {
     }
     location.hash = `#/host/${p.roomCode}?preset=${p.id}`
   }
-  const save = (p: LessonPreset) => {
-    setPresets(upsertPreset(p).sort((a, b) => b.lastUsedAt - a.lastUsedAt))
+  const save = async (p: LessonPreset) => {
+    const withKeys = await ensureKeys(p)
+    setPresets(upsertPreset(withKeys).sort((a, b) => b.lastUsedAt - a.lastUsedAt))
     setEditing(null)
   }
   const remove = (id: string) => {
@@ -234,7 +245,7 @@ function TeacherPanel() {
                   </div>
                 </div>
                 <span className="shrink-0 rounded-md border border-[var(--border)] px-1.5 py-0.5 font-mono text-[11px] tracking-widest text-[var(--muted)]" title="Permanent room code">
-                  {p.roomCode}
+                  {formatRoomCode(p.roomCode)}
                 </span>
               </div>
               <div className="mt-auto flex items-center gap-2">
@@ -254,7 +265,7 @@ function TeacherPanel() {
         </ul>
       )}
 
-      {editing && <LessonForm preset={editing} onSave={save} onCancel={presets.length ? () => setEditing(null) : undefined} />}
+      {editing && <LessonForm preset={editing} onSave={(p) => void save(p)} onCancel={presets.length ? () => setEditing(null) : undefined} />}
     </section>
   )
 }
@@ -336,7 +347,7 @@ function LessonForm({ preset, onSave, onCancel }: { preset: LessonPreset; onSave
           </button>
         )}
         <span className="ml-auto font-mono text-[11px] tracking-widest text-[var(--muted)]" title="Permanent room code for this lesson">
-          Room {p.roomCode}
+          {p.roomCode ? `Room ${formatRoomCode(p.roomCode)}` : 'Room code is created when you save'}
         </span>
       </div>
     </form>
