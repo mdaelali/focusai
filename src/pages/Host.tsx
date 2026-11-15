@@ -149,7 +149,7 @@ export default function Host({ room, presetId }: Props) {
             </button>
           )}
           {n.desktop === 'granted' && (
-            <button type="button" onClick={n.testNotification} className="btn-ghost" title="Send yourself a sample alert. Switch to your meeting first to see it appear over it.">
+            <button type="button" onClick={() => void n.testNotification()} className="btn-ghost" title="Send yourself a sample alert. Switch to your meeting first to see it appear over it.">
               Notifications on · Send a test
             </button>
           )}
@@ -204,6 +204,30 @@ export default function Host({ room, presetId }: Props) {
             <div className="mt-1 text-sm text-[var(--muted)]">Students point their camera app at this code. It opens the join page for room <span className="font-mono tracking-widest text-[var(--text)]">{room}</span>. Share your screen for a moment so everyone can scan it.</div>
             <code className="mt-2 block break-all rounded-md bg-[var(--panel-2)] px-2 py-1 text-xs">{joinLink}</code>
           </div>
+        </div>
+      )}
+
+      {n.testResult && n.testResult !== 'pending' && (
+        <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: n.testResult === 'shown' ? 'var(--info)' : 'var(--warn)', background: `color-mix(in srgb, ${n.testResult === 'shown' ? 'var(--info)' : 'var(--warn)'} 10%, transparent)` }}>
+          {n.testResult === 'shown' ? (
+            <>
+              <div className="font-medium">The browser sent the test notification.</div>
+              <div className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                If it did not appear on your screen, your operating system is hiding Chrome's notifications. On Windows: Settings → System →
+                Notifications → turn <b>Do not disturb</b> off, open <b>Turn on do not disturb automatically</b> and untick "when using an app in
+                full-screen mode" and "when playing a game" (Zoom and Meet count as full-screen apps), then scroll down and make sure Google Chrome
+                is allowed and can show banners. On a Mac: System Settings → Notifications → Google Chrome → Allow, and turn Focus off while teaching.
+                Then switch to your meeting and send the test again.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-medium">The browser could not show a notification.</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">
+                Click the lock icon in the address bar, set Notifications to Allow, reload this page and send the test again.
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -367,7 +391,8 @@ export default function Host({ room, presetId }: Props) {
             The moment someone steps away, looks elsewhere, picks up a phone, closes their eyes, turns the camera off
             or leaves, their card turns amber, a toast appears here, a tone plays, and a system notification with sound
             appears over your meeting whenever this tab is not the one you are looking at. Check-in notifications stay
-            on screen until you dismiss them.
+            on screen until you dismiss them. Windows hides notifications while an app is full screen unless you turn that
+            rule off (Settings → System → Notifications → Turn on do not disturb automatically). Use "Send a test" to check.
             After a longer stretch a "consider checking in" alert is added to the list above. Blue states and
             self-declared statuses never trigger any of this.
           </div>

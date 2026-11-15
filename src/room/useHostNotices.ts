@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { STATE_LABEL, type BehaviorState } from '../engagement/behavior'
 import type { HostAlert, RosterEntry } from './useRoomHost'
-import { showSystemNotification } from '../lib/device'
+import { showSystemNotification, type NotifyResult } from '../lib/device'
 
 /**
  * Turns roster changes and alerts into things a busy host actually notices:
@@ -26,12 +26,12 @@ export interface Notice {
 const WARN_STATES: ReadonlySet<BehaviorState> = new Set<BehaviorState>(['stepped_away', 'distracted', 'using_phone', 'drowsy'])
 const TOAST_MS = 10_000
 
-function showDesktop(n: Notice, force = false) {
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-  if (!force && document.hasFocus()) return
+function showDesktop(n: Notice, force = false): Promise<NotifyResult> | null {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return null
+  if (!force && document.hasFocus()) return null
   // Desktop browsers accept the constructor; Android and iOS only allow
   // notifications through the service worker. The helper picks the right one.
-  void showSystemNotification(`FocusAI · ${n.name}`, {
+  return showSystemNotification(`FocusAI · ${n.name}`, {
     body: n.kind === 'check_in' ? `${n.text}. Consider checking in.` : n.text,
     tag: `focusai-${n.name}-${n.kind}`,
     icon: '/icons/icon-192.png',
@@ -99,7 +99,7 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
       // meeting still reports "visible", so use focus, not visibility: notify
       // whenever this tab is not the thing they are looking at.
       if (desktop === 'granted' && !document.hasFocus()) {
-        showDesktop(n)
+        void showDesktop(n)
       }
     },
     [beep, desktop],
@@ -145,12 +145,15 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alerts])
 
-  const testNotification = useCallback(() => {
+  const [testResult, setTestResult] = useState<NotifyResult | 'pending' | null>(null)
+  const testNotification = useCallback(async () => {
     const n: Notice = { id: `test-${Date.now()}`, ts: Date.now(), name: 'Test student', state: 'stepped_away', text: 'Stepped away just now. This is how an alert looks while you are in your meeting.', kind: 'check_in' }
     setNotices((prev) => [n, ...prev].slice(0, 6))
     window.setTimeout(() => setNotices((prev) => prev.filter((x) => x.id !== n.id)), TOAST_MS)
     beep(2)
-    showDesktop(n, true)
+    setTestResult('pending')
+    const r = await showDesktop(n, true)
+    setTestResult(r ?? 'blocked')
   }, [beep])
 
   const requestDesktop = useCallback(async () => {
@@ -164,5 +167,5 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
 
   const dismiss = useCallback((id: string) => setNotices((prev) => prev.filter((n) => n.id !== id)), [])
 
-  return { notices, dismiss, sound, setSound, desktop, requestDesktop, testNotification }
+  return { notices, dismiss, sound, setSound, desktop, requestDesktop, testNotification, testResult }
 }

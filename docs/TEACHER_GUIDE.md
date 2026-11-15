@@ -28,7 +28,12 @@ someone talking to them). Amber means a pattern that might deserve a quick word.
    system notification with a sound appears over Zoom or Meet whenever a student steps away,
    turns the camera off or leaves, and check-in notifications stay on screen until you dismiss
    them. Use **Send a test** on the host page, switch to your meeting, and confirm you see it.
-   On Windows, make sure Focus Assist / Do not disturb is off during lessons.
+   On Windows, notifications are hidden while any app is full screen (Zoom and Meet count) unless you
+   change one setting: Settings → System → Notifications → **Turn on do not disturb automatically** →
+   untick "When using an app in full-screen mode" and "When playing a game". Also keep **Do not
+   disturb** off and make sure Google Chrome is allowed to show banners. On a Mac, allow Chrome under
+   System Settings → Notifications and turn Focus off while teaching. "Send a test" tells you whether
+   the browser sent the notification, so if you still see nothing it is one of these settings.
 5. Ask students to click **Calibrate** once while looking at your slides. It takes a second.
 
 ## During the lesson

@@ -69,13 +69,19 @@ export function holdWakeLock(): () => void {
  * accept `new Notification()`; Android and iOS only allow notifications via a
  * service worker registration. Returns false if nothing could be shown.
  */
-export async function showSystemNotification(title: string, options: NotificationOptions): Promise<boolean> {
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false
+export type NotifyResult = 'shown' | 'blocked' | 'unsupported'
+
+export async function showSystemNotification(title: string, options: NotificationOptions): Promise<NotifyResult> {
+  if (typeof Notification === 'undefined') return 'unsupported'
+  if (Notification.permission !== 'granted') return 'blocked'
   try {
     const reg = await navigator.serviceWorker?.getRegistration()
     if (reg?.showNotification) {
       await reg.showNotification(title, options)
-      return true
+      // The browser accepted it. Whether the OS puts it on screen is up to
+      // Do not disturb / Focus settings, which a page cannot see.
+      const live = options.tag ? await reg.getNotifications({ tag: options.tag }).catch(() => []) : []
+      return live.length > 0 || !options.tag ? 'shown' : 'blocked'
     }
   } catch {
     /* fall through to the constructor */
@@ -86,9 +92,18 @@ export async function showSystemNotification(title: string, options: Notificatio
       window.focus()
       note.close()
     }
-    return true
+    if (typeof note.addEventListener !== 'function') return 'shown'
+    return await new Promise<NotifyResult>((resolve) => {
+      const done = (r: NotifyResult) => {
+        window.clearTimeout(timer)
+        resolve(r)
+      }
+      const timer = window.setTimeout(() => done('shown'), 1500)
+      note.addEventListener('show', () => done('shown'), { once: true })
+      note.addEventListener('error', () => done('blocked'), { once: true })
+    })
   } catch {
-    return false
+    return 'blocked'
   }
 }
 
