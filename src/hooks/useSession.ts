@@ -342,6 +342,17 @@ export function useSession() {
           stopRef.current()
           setError('The camera stopped: unplugged, switched off, or taken by another app. Start again when it is back.')
         })
+        // Phones mute the track (no frames, stream still open) when another
+        // app is in front or the OS needs the camera. Reflect that at once.
+        track.addEventListener('mute', () => {
+          if (streamRef.current !== stream) return
+          setLive((prev) => (prev.cameraStalled ? prev : { ...prev, cameraStalled: true }))
+        })
+        track.addEventListener('unmute', () => {
+          if (streamRef.current !== stream) return
+          lastFrameAtRef.current = performance.now()
+          setLive((prev) => (prev.cameraStalled ? { ...prev, cameraStalled: false } : prev))
+        })
       }
 
       framesRef.current = []

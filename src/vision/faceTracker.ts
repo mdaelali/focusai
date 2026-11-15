@@ -16,19 +16,24 @@ export class FaceTracker {
   async init(): Promise<void> {
     if (this.landmarker) return
     const fileset = await FilesetResolver.forVisionTasks('/wasm')
-    this.landmarker = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: {
-        modelAssetPath: '/models/face_landmarker.task',
-        delegate: 'GPU',
-      },
-      runningMode: 'VIDEO',
-      numFaces: 2, // detect a second face so we can flag "multiple faces"
-      outputFaceBlendshapes: true,
-      outputFacialTransformationMatrixes: true,
-      minFaceDetectionConfidence: 0.5,
-      minFacePresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    })
+    const make = (delegate: 'GPU' | 'CPU') =>
+      FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: '/models/face_landmarker.task', delegate },
+        runningMode: 'VIDEO',
+        numFaces: 2, // detect a second face so we can flag "multiple faces"
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        minFaceDetectionConfidence: 0.5,
+        minFacePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      })
+    try {
+      this.landmarker = await make('GPU')
+    } catch (e) {
+      // Some phones and remote desktops have no usable WebGL: run on the CPU instead.
+      console.warn('Face landmarker: GPU delegate unavailable, using CPU.', e)
+      this.landmarker = await make('CPU')
+    }
   }
 
   get ready(): boolean {

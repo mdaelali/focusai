@@ -77,10 +77,16 @@ export function useRoomParticipant(room: string, name: string, onHello?: (h: Hos
     for (const a of snap?.alerts ?? []) sendAlert(a)
   }
 
+  /** Send the current report immediately (used right before a phone suspends the page). */
+  const flush = () => {
+    const r = buildReport()
+    if (r) transportRef.current?.send(r)
+  }
+
   const sendAlert = (alert: Alert) => {
     const offset = Date.now() - performance.now()
     transportRef.current?.send({ kind: 'alert', id: idRef.current, name, ts: Date.now(), alert: { ...alert, t: Math.round(alert.t + offset) } })
   }
 
-  return { id: idRef.current, kind, publish, sentCount, lesson }
+  return { id: idRef.current, kind, publish, flush, sentCount, lesson }
 }

@@ -108,6 +108,7 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
       setAlerts((prev) => [{ kind: 'alert' as const, id: who.id, name: who.name, ts, alert: { id: `host-${ts}-${seq++}`, t: ts, state, severity, message }, seen: false }, ...prev].slice(0, 200))
     }
 
+    const hadCamera = new Set<string>()
     const off = t.onMessage((m) => {
       const now = Date.now()
       if (m.kind === 'report') {
@@ -115,8 +116,9 @@ export function useRoomHost(room: string, options: HostOptions = {}) {
         const prev = rosterRef.current.get(m.id)
         if (!prev) t.send(hello())
         if (prev?.left) hostAlert(m, 'info', m.state, 'Rejoined the session')
-        else if (prev && prev.camera && !m.camera) hostAlert(m, 'check_in', 'no_data', 'Turned the camera off')
-        else if (prev && !prev.camera && m.camera && prev.lastSeen > 0) hostAlert(m, 'info', m.state, 'Camera is on again')
+        else if (prev && prev.camera && !m.camera) hostAlert(m, 'check_in', 'no_data', m.reason && m.reason !== 'Camera off' ? m.reason : 'Turned the camera off')
+        else if (prev && !prev.camera && m.camera && hadCamera.has(m.id)) hostAlert(m, 'info', m.state, 'Camera is on again')
+        if (m.camera) hadCamera.add(m.id)
         const tot = totalsRef.current.get(m.id) ?? {
           id: m.id, name: m.name, byState: {}, selfDeclaredMs: 0, alerts: 0, firstSeen: m.ts, lastSeen: m.ts, episodes: [], alertLog: [],
         }

@@ -27,13 +27,20 @@ export class PhoneDetector {
   async init(): Promise<void> {
     if (this.detector) return
     const fileset = await FilesetResolver.forVisionTasks('/wasm')
-    this.detector = await ObjectDetector.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: '/models/efficientdet_lite0.tflite', delegate: 'GPU' },
-      runningMode: 'VIDEO',
-      categoryAllowlist: ['cell phone'],
-      scoreThreshold: 0.35,
-      maxResults: 2,
-    })
+    const make = (delegate: 'GPU' | 'CPU') =>
+      ObjectDetector.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: '/models/efficientdet_lite0.tflite', delegate },
+        runningMode: 'VIDEO',
+        categoryAllowlist: ['cell phone'],
+        scoreThreshold: 0.35,
+        maxResults: 2,
+      })
+    try {
+      this.detector = await make('GPU')
+    } catch (e) {
+      console.warn('Phone detector: GPU delegate unavailable, using CPU.', e)
+      this.detector = await make('CPU')
+    }
   }
 
   get ready(): boolean {

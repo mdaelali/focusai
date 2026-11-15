@@ -6,6 +6,8 @@ import { useHostNotices } from '../room/useHostNotices'
 import { ClassOverview } from '../components/ClassOverview'
 import { LessonReview } from '../components/LessonReview'
 import { findPreset, markUsed, SENSITIVITY_LABEL, SENSITIVITY_POLICY, type LessonPreset } from '../lessons/presets'
+import { JoinQr } from '../components/JoinQr'
+import { holdWakeLock, notificationsPossible } from '../lib/device'
 
 interface Props {
   room: string
@@ -65,6 +67,10 @@ export default function Host({ room, presetId }: Props) {
     const t = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(t)
   }, [])
+  // A teacher may run this on a phone propped next to the laptop: keep it awake.
+  useEffect(() => holdWakeLock(), [])
+  const [showQr, setShowQr] = useState(false)
+  const notifyPossible = notificationsPossible()
 
   const unseen = h.alerts.filter((a) => !a.seen)
   useEffect(() => {
@@ -136,24 +142,23 @@ export default function Host({ room, presetId }: Props) {
             <button
               type="button"
               onClick={n.requestDesktop}
-              className="cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--panel-2)]"
+              className="btn-ghost"
               title="Get a system notification when this tab is behind the meeting window"
             >
-              Enable desktop notifications
+              Turn on notifications
             </button>
           )}
           {n.desktop === 'granted' && (
-            <button type="button" onClick={n.testNotification} className="cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--panel-2)]" title="Send yourself a sample alert. Switch to your meeting first to see it appear over it.">
-              Desktop notifications on · Send a test
+            <button type="button" onClick={n.testNotification} className="btn-ghost" title="Send yourself a sample alert. Switch to your meeting first to see it appear over it.">
+              Notifications on · Send a test
             </button>
           )}
-          {n.desktop === 'denied' && <span className="text-xs text-[var(--muted)]">Desktop notifications blocked in browser settings</span>}
-          <button
-            type="button"
-            onClick={copy}
-            className="cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--panel-2)]"
-          >
+          {n.desktop === 'denied' && <span className="text-xs text-[var(--muted)]">Notifications blocked in browser settings</span>}
+          <button type="button" onClick={copy} className="btn-ghost">
             {copied ? 'Copied' : 'Copy join link'}
+          </button>
+          <button type="button" onClick={() => setShowQr((v) => !v)} className="btn-ghost" aria-pressed={showQr} title="Students on phones can scan this">
+            QR code
           </button>
           <button
             type="button"
@@ -191,21 +196,34 @@ export default function Host({ room, presetId }: Props) {
         </div>
       )}
 
+      {showQr && (
+        <div className="panel flex flex-col items-center gap-4 p-5 sm:flex-row sm:items-center">
+          <JoinQr url={joinLink} size={200} />
+          <div className="text-center sm:text-left">
+            <div className="text-lg font-semibold">Scan to join from a phone</div>
+            <div className="mt-1 text-sm text-[var(--muted)]">Students point their camera app at this code. It opens the join page for room <span className="font-mono tracking-widest text-[var(--text)]">{room}</span>. Share your screen for a moment so everyone can scan it.</div>
+            <code className="mt-2 block break-all rounded-md bg-[var(--panel-2)] px-2 py-1 text-xs">{joinLink}</code>
+          </div>
+        </div>
+      )}
+
       {n.desktop !== 'granted' && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 10%, transparent)' }}>
           <div className="text-sm">
             <div className="font-medium">You will be in Zoom or Meet while teaching. Alerts need to reach you there.</div>
             <div className="text-xs text-[var(--muted)]">
               {n.desktop === 'denied'
-                ? 'Desktop notifications are blocked for this site. Click the lock icon in the address bar, allow Notifications, then reload.'
+                ? 'Notifications are blocked for this site. Click the lock icon in the address bar, allow Notifications, then reload.'
                 : n.desktop === 'unsupported'
-                  ? 'This browser cannot show desktop notifications. Keep this window visible on a second screen, or use Chrome or Edge.'
-                  : 'Turn on desktop notifications once. A system notification with a sound then appears over the meeting whenever a student steps away, turns the camera off or leaves.'}
+                  ? notifyPossible === 'install-first'
+                    ? 'On iPhone and iPad, notifications only work once FocusAI is on your home screen: tap Share, then "Add to Home Screen", and open it from there.'
+                    : 'This browser cannot show system notifications. Keep this window visible on a second screen, or use Chrome or Edge.'
+                  : 'Turn on notifications once. A system notification with a sound then appears over the meeting whenever a student steps away, turns the camera off or leaves.'}
             </div>
           </div>
           {n.desktop === 'default' && (
             <button type="button" onClick={n.requestDesktop} className="btn-primary">
-              Turn on desktop notifications
+              Turn on notifications
             </button>
           )}
         </div>
@@ -260,8 +278,12 @@ export default function Host({ room, presetId }: Props) {
           {h.participants.length === 0 ? (
             <div className="panel flex flex-col items-center gap-2 p-10 text-center text-sm text-[var(--muted)]">
               <div className="text-base font-medium text-[var(--text)]">Waiting for participants</div>
-              <div>Share the room code or the join link. Each person opens it next to the meeting and starts sharing.</div>
-              <code className="mt-2 rounded-md bg-[var(--panel-2)] px-2 py-1 text-xs">{joinLink}</code>
+              <div>Share the room code or the join link. Each person opens it next to the meeting, on a laptop or a phone, and starts sharing.</div>
+              <code className="mt-2 max-w-full break-all rounded-md bg-[var(--panel-2)] px-2 py-1 text-xs">{joinLink}</code>
+              <div className="mt-4">
+                <JoinQr url={joinLink} size={160} />
+              </div>
+              <div className="text-xs">Phones can scan this</div>
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

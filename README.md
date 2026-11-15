@@ -10,6 +10,8 @@ is nudged to check in. Video never leaves the student's computer.
 
 ![Home page: set up lessons, or join one with a code](docs/screenshots/home.png)
 
+<img src="docs/screenshots/phone-home.png" alt="The same page on a phone" width="260" />
+
 ## What it does
 
 | For the teacher | For the student |
@@ -23,6 +25,15 @@ is nudged to check in. Video never leaves the student's computer.
 ![Host dashboard during a lesson](docs/screenshots/host.png)
 
 ![What a student sees](docs/screenshots/student.png)
+
+## Phones and tablets
+
+FocusAI is installable (web app manifest, home-screen icon) and works on iOS and Android browsers.
+Students can scan a QR code from the host page to join, the screen is kept awake with the Wake Lock
+API while sharing, OS camera pauses (track `mute`) and app switches are reported to the host as
+*Switched to another app on their phone*, and notifications go through a minimal service worker
+because mobile browsers refuse `new Notification()`. The service worker caches nothing. The vision
+models fall back to the CPU delegate where WebGL is unavailable.
 
 ## Normal life is not disengagement
 

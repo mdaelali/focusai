@@ -4,6 +4,7 @@ import { useRoomParticipant } from '../room/useRoomParticipant'
 import { WebcamView } from '../components/WebcamView'
 import { BehaviorPanel } from '../components/BehaviorPanel'
 import { StateBadge } from '../components/StateBadge'
+import { holdWakeLock, isPhoneOrTablet } from '../lib/device'
 
 interface Props {
   room: string
@@ -16,14 +17,35 @@ export default function Join({ room, name }: Props) {
     if (h.policy) s.setPolicy(h.policy)
   })
   const [consented, setConsented] = useState(false)
+  const [phone] = useState(isPhoneOrTablet)
+  // On a phone the OS pauses the camera the moment another app is in front.
+  // Track that explicitly so the host hears "switched to another app", not silence.
+  const [inBackground, setInBackground] = useState(false)
   const running = s.status === 'running'
+
+  useEffect(() => {
+    if (!phone) return
+    const on = () => setInBackground(document.visibilityState === 'hidden')
+    document.addEventListener('visibilitychange', on)
+    return () => document.removeEventListener('visibilitychange', on)
+  }, [phone])
+
+  // Keep the screen awake while sharing; a sleeping phone is a dead camera.
+  useEffect(() => {
+    if (!running) return
+    return holdWakeLock()
+  }, [running])
 
   // Push the newest state to the room whenever it changes.
   useEffect(() => {
     const stalled = running && s.live.cameraStalled
-    r.publish(s.live.behavior, s.live.window?.score ?? null, running && !stalled, stalled ? 'Camera is not delivering frames' : null)
+    const paused = running && (stalled || inBackground)
+    const note = inBackground ? 'Switched to another app on their phone' : stalled ? 'Camera is not delivering frames' : null
+    r.publish(s.live.behavior, s.live.window?.score ?? null, running && !paused, note)
+    // Backgrounded phones suspend timers almost immediately: send right now.
+    if (inBackground) r.flush()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.live.behavior, s.live.window?.score, running, s.live.cameraStalled])
+  }, [s.live.behavior, s.live.window?.score, running, s.live.cameraStalled, inBackground])
 
   const start = () => {
     setConsented(true)
@@ -35,19 +57,21 @@ export default function Join({ room, name }: Props) {
     location.hash = '#/'
   }
 
+  const showConsent = !consented || s.status === 'idle' || s.status === 'stopped' || s.status === 'error'
+
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-4 px-4 py-5 md:py-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Focus<span style={{ color: 'var(--accent)' }}>AI</span>
-            <span className="ml-3 rounded-md border border-[var(--border)] px-2 py-0.5 align-middle text-[11px] font-medium text-[var(--muted)]">
-              Room {room}
-            </span>
-          </h1>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">
+              Focus<span style={{ color: 'var(--accent)' }}>AI</span>
+            </h1>
+            <span className="rounded-md border border-[var(--border)] px-2 py-0.5 font-mono text-[11px] tracking-widest text-[var(--muted)]">{room}</span>
+          </div>
           <p className="mt-1 text-sm text-[var(--muted)]">
             {r.lesson ? <span className="text-[var(--text)]">{r.lesson.name}</span> : 'Waiting for the host'}
-            {' · '}joined as {name}. Keep this tab open next to your meeting.
+            {' · '}joined as {name}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -57,53 +81,60 @@ export default function Join({ room, name }: Props) {
             </span>
           )}
           {running && !s.live.cameraStalled && s.live.behavior && <StateBadge state={s.live.behavior.state} />}
-          <button
-            type="button"
-            onClick={leave}
-            className="cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--panel-2)]"
-          >
+          <button type="button" onClick={leave} className="btn-ghost">
             Leave
           </button>
         </div>
       </header>
 
       {s.error && (
-        <div className="rounded-lg border px-4 py-3 text-sm" style={{ borderColor: 'var(--bad)', color: 'var(--bad)' }}>
+        <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--bad)', color: 'var(--bad)' }}>
           {s.error}
         </div>
       )}
 
-      {!consented || s.status === 'idle' || s.status === 'stopped' || s.status === 'error' ? (
-        <section className="panel flex flex-col gap-4 p-6">
-          <h2 className="text-base font-semibold">Before you share your camera</h2>
-          <ul className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-            <li>Your video is analysed only on this device. No frame or image is sent anywhere.</li>
-            <li>
-              The host receives a short status label (attentive, taking notes, talking to someone, stepped away) and a
-              0–100 visual engagement estimate. Nothing else.
-            </li>
-            <li>Writing notes, picking something up, or talking to someone who walked in are treated as normal.</li>
-            <li>You can mark yourself as busy or away at any time, and you can stop sharing whenever you like.</li>
+      {showConsent && (
+        <section className="panel panel-glow flex flex-col gap-5 p-5 md:p-7">
+          <div>
+            <span className="eyebrow">Before you share</span>
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight">Your camera stays with you</h2>
+          </div>
+          <ul className="flex flex-col gap-2.5 text-sm text-[var(--muted)]">
+            <Point>Your video is analysed only on this device. No frame or image is sent anywhere.</Point>
+            <Point>
+              Your host receives a short status (attentive, taking notes, talking to someone, stepped away) and a 0–100
+              estimate. Nothing else.
+            </Point>
+            <Point>Writing notes, picking something up, or talking to someone who walked in are treated as normal.</Point>
+            <Point>You can mark yourself as busy or away at any time, and stop sharing whenever you like.</Point>
           </ul>
-          <button
-            type="button"
-            onClick={start}
-            disabled={s.status === 'loading'}
-            className="cursor-pointer self-start rounded-lg px-4 py-2 text-sm font-semibold text-black disabled:cursor-wait disabled:opacity-60"
-            style={{ background: 'var(--accent)' }}
-          >
-            {s.status === 'loading' ? 'Loading model…' : 'I agree, start sharing my status'}
+          {phone && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-2)] p-4 text-sm">
+              <div className="font-medium">Using a phone</div>
+              <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4 text-[var(--muted)]">
+                <li>Prop it up so the front camera sees your face, roughly where you look at the lesson.</li>
+                <li>Keep this screen open. It stays awake by itself.</li>
+                <li>If you switch to another app, the camera pauses and your host is told until you come back.</li>
+                <li>If the meeting is on this same phone, use split screen, or join the meeting from another device.</li>
+              </ul>
+            </div>
+          )}
+          <button type="button" onClick={start} disabled={s.status === 'loading'} className="btn-primary w-full disabled:cursor-wait sm:w-auto sm:self-start">
+            {s.status === 'loading' ? 'Loading the models…' : 'I agree, start sharing my status'}
           </button>
+          {s.status === 'loading' && <div className="text-xs text-[var(--muted)]">The first start downloads the models once (about 25 MB). Later starts are instant.</div>}
         </section>
-      ) : null}
+      )}
 
       <div className={consented && (running || s.status === 'loading') ? 'grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : 'hidden'}>
         <div className="panel p-3">
-          <WebcamView videoRef={s.videoRef} frame={s.live.frame} showLandmarks={false} active={running} />
-          <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--muted)]">
+          <div className="mx-auto max-w-xs sm:max-w-none">
+            <WebcamView videoRef={s.videoRef} frame={s.live.frame} showLandmarks={false} active={running} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--muted)]">
             <span>Preview stays on this device</span>
-            <button type="button" onClick={s.calibrate} disabled={!running} className="cursor-pointer hover:underline disabled:opacity-40">
-              Calibrate (look at the lesson, then click)
+            <button type="button" onClick={s.calibrate} disabled={!running} className="cursor-pointer py-1 hover:underline disabled:opacity-40">
+              Calibrate: look at the lesson, then tap
             </button>
           </div>
         </div>
@@ -127,17 +158,22 @@ export default function Join({ room, name }: Props) {
               <span>{s.live.window?.score ?? '—'}</span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={s.stop}
-            disabled={!running}
-            className="cursor-pointer self-start rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
-            style={{ background: 'var(--bad)', color: '#111' }}
-          >
+          <button type="button" onClick={s.stop} disabled={!running} className="btn-danger w-full sm:w-auto sm:self-start">
             Stop sharing
           </button>
         </div>
       </div>
     </div>
+  )
+}
+
+function Point({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex gap-2.5">
+      <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+      <span>{children}</span>
+    </li>
   )
 }

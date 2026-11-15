@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { STATE_LABEL, type BehaviorState } from '../engagement/behavior'
 import type { HostAlert, RosterEntry } from './useRoomHost'
+import { showSystemNotification } from '../lib/device'
 
 /**
  * Turns roster changes and alerts into things a busy host actually notices:
@@ -28,22 +29,17 @@ const TOAST_MS = 10_000
 function showDesktop(n: Notice, force = false) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   if (!force && document.hasFocus()) return
-  try {
-    const note = new Notification(`FocusAI · ${n.name}`, {
-      body: n.kind === 'check_in' ? `${n.text}. Consider checking in.` : n.text,
-      tag: `focusai-${n.name}-${n.kind}`,
-      icon: '/favicon.svg',
-      // Check-ins stay on screen until dismissed; the OS plays its own sound.
-      requireInteraction: n.kind === 'check_in',
-      silent: false,
-    })
-    note.onclick = () => {
-      window.focus()
-      note.close()
-    }
-  } catch {
-    /* notifications blocked */
-  }
+  // Desktop browsers accept the constructor; Android and iOS only allow
+  // notifications through the service worker. The helper picks the right one.
+  void showSystemNotification(`FocusAI · ${n.name}`, {
+    body: n.kind === 'check_in' ? `${n.text}. Consider checking in.` : n.text,
+    tag: `focusai-${n.name}-${n.kind}`,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    // Check-ins stay on screen until dismissed; the OS plays its own sound.
+    requireInteraction: n.kind === 'check_in',
+    silent: false,
+  })
 }
 
 export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[]) {

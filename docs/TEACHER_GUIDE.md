@@ -95,3 +95,20 @@ Useful ways to read it:
   nothing flags for several minutes. Or press "Interrupted".
 - **"I write on paper."** Fine. Look up every so often. If they prefer, press "Taking notes".
 - **"Does this affect my grade?"** It must not. Say so plainly.
+
+## Using FocusAI on phones and tablets
+
+**Students.** The join page works on iPhone, iPad and Android in Safari or Chrome. Students
+can scan the QR code on your host page (the **QR code** button, or the waiting panel) instead of
+typing the code. On a phone they should prop the device up so the front camera sees their face,
+roughly where they look at the lesson. The screen stays awake automatically. If they switch to
+another app the camera pauses and you see *Switched to another app on their phone* until they
+return. If the meeting itself is on the same phone, split screen works on Android and iPadOS;
+otherwise the phone is best used as a dedicated camera next to the laptop running the meeting.
+
+**Teachers.** The host page works on a phone too, for example propped next to the laptop that
+runs Zoom: cards, toasts and the tone all work, and the screen stays awake. System notifications
+on Android work after you allow them. On iPhone and iPad, notifications only work when FocusAI is
+on the home screen: tap Share, then **Add to Home Screen**, open it from there, then allow
+notifications. A phone browser that is put in the background stops receiving updates, so keep
+the FocusAI screen open while teaching.
