@@ -142,7 +142,11 @@ export default function Host({ room, presetId }: Props) {
               Enable desktop notifications
             </button>
           )}
-          {n.desktop === 'granted' && <span className="text-xs text-[var(--muted)]">Desktop notifications on</span>}
+          {n.desktop === 'granted' && (
+            <button type="button" onClick={n.testNotification} className="cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--panel-2)]" title="Send yourself a sample alert. Switch to your meeting first to see it appear over it.">
+              Desktop notifications on · Send a test
+            </button>
+          )}
           {n.desktop === 'denied' && <span className="text-xs text-[var(--muted)]">Desktop notifications blocked in browser settings</span>}
           <button
             type="button"
@@ -184,6 +188,26 @@ export default function Host({ room, presetId }: Props) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {n.desktop !== 'granted' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 10%, transparent)' }}>
+          <div className="text-sm">
+            <div className="font-medium">You will be in Zoom or Meet while teaching. Alerts need to reach you there.</div>
+            <div className="text-xs text-[var(--muted)]">
+              {n.desktop === 'denied'
+                ? 'Desktop notifications are blocked for this site. Click the lock icon in the address bar, allow Notifications, then reload.'
+                : n.desktop === 'unsupported'
+                  ? 'This browser cannot show desktop notifications. Keep this window visible on a second screen, or use Chrome or Edge.'
+                  : 'Turn on desktop notifications once. A system notification with a sound then appears over the meeting whenever a student steps away, turns the camera off or leaves.'}
+            </div>
+          </div>
+          {n.desktop === 'default' && (
+            <button type="button" onClick={n.requestDesktop} className="btn-primary">
+              Turn on desktop notifications
+            </button>
+          )}
         </div>
       )}
 
@@ -318,8 +342,10 @@ export default function Host({ room, presetId }: Props) {
 
           <div className="panel p-4 text-xs leading-relaxed text-[var(--muted)]">
             <div className="mb-1 font-medium text-[var(--text)]">How you are warned</div>
-            The moment someone steps away, looks elsewhere, picks up a phone or closes their eyes, their card turns
-            amber, a toast appears here, a tone plays, and a desktop notification is sent if this tab is hidden.
+            The moment someone steps away, looks elsewhere, picks up a phone, closes their eyes, turns the camera off
+            or leaves, their card turns amber, a toast appears here, a tone plays, and a system notification with sound
+            appears over your meeting whenever this tab is not the one you are looking at. Check-in notifications stay
+            on screen until you dismiss them.
             After a longer stretch a "consider checking in" alert is added to the list above. Blue states and
             self-declared statuses never trigger any of this.
           </div>

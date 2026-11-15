@@ -24,8 +24,11 @@ someone talking to them). Amber means a pattern that might deserve a quick word.
    > If you need to write, take a call, or step away, press the button in the tab and nothing
    > will flag. It is not part of your grade."
 
-4. Keep the FocusAI tab on a second screen or beside the meeting window. Click **Enable
-   desktop notifications** so you still get a nudge when the meeting is full-screen.
+4. When you start the lesson the browser asks to allow notifications. Say yes. From then on a
+   system notification with a sound appears over Zoom or Meet whenever a student steps away,
+   turns the camera off or leaves, and check-in notifications stay on screen until you dismiss
+   them. Use **Send a test** on the host page, switch to your meeting, and confirm you see it.
+   On Windows, make sure Focus Assist / Do not disturb is off during lessons.
 5. Ask students to click **Calibrate** once while looking at your slides. It takes a second.
 
 ## During the lesson

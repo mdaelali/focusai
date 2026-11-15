@@ -25,12 +25,50 @@ export interface Notice {
 const WARN_STATES: ReadonlySet<BehaviorState> = new Set<BehaviorState>(['stepped_away', 'distracted', 'using_phone', 'drowsy'])
 const TOAST_MS = 10_000
 
+function showDesktop(n: Notice, force = false) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+  if (!force && document.hasFocus()) return
+  try {
+    const note = new Notification(`FocusAI · ${n.name}`, {
+      body: n.kind === 'check_in' ? `${n.text}. Consider checking in.` : n.text,
+      tag: `focusai-${n.name}-${n.kind}`,
+      icon: '/favicon.svg',
+      // Check-ins stay on screen until dismissed; the OS plays its own sound.
+      requireInteraction: n.kind === 'check_in',
+      silent: false,
+    })
+    note.onclick = () => {
+      window.focus()
+      note.close()
+    }
+  } catch {
+    /* notifications blocked */
+  }
+}
+
 export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[]) {
   const [notices, setNotices] = useState<Notice[]>([])
   const [sound, setSound] = useState(true)
   const [desktop, setDesktop] = useState<NotificationPermission | 'unsupported'>(() =>
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   )
+  useEffect(() => {
+    const warm = () => {
+      try {
+        audioRef.current ??= new AudioContext()
+        if (audioRef.current.state === 'suspended') void audioRef.current.resume()
+      } catch {
+        /* no audio */
+      }
+    }
+    window.addEventListener('pointerdown', warm, { once: true })
+    window.addEventListener('keydown', warm, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', warm)
+      window.removeEventListener('keydown', warm)
+    }
+  }, [])
+
   const prevStates = useRef<Map<string, BehaviorState>>(new Map())
   const seenAlerts = useRef<Set<string>>(new Set())
   const audioRef = useRef<AudioContext | null>(null)
@@ -61,16 +99,11 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
       setNotices((prev) => [n, ...prev].slice(0, 6))
       window.setTimeout(() => setNotices((prev) => prev.filter((x) => x.id !== n.id)), TOAST_MS)
       beep(n.kind === 'check_in' ? 2 : 1)
-      if (desktop === 'granted' && document.visibilityState !== 'visible') {
-        try {
-          const note = new Notification(`FocusAI: ${n.name}`, { body: n.text, tag: `focusai-${n.name}`, silent: true })
-          note.onclick = () => {
-            window.focus()
-            note.close()
-          }
-        } catch {
-          /* notifications blocked */
-        }
+      // The teacher is normally in Zoom or Meet. A browser window behind the
+      // meeting still reports "visible", so use focus, not visibility: notify
+      // whenever this tab is not the thing they are looking at.
+      if (desktop === 'granted' && !document.hasFocus()) {
+        showDesktop(n)
       }
     },
     [beep, desktop],
@@ -116,6 +149,14 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alerts])
 
+  const testNotification = useCallback(() => {
+    const n: Notice = { id: `test-${Date.now()}`, ts: Date.now(), name: 'Test student', state: 'stepped_away', text: 'Stepped away just now. This is how an alert looks while you are in your meeting.', kind: 'check_in' }
+    setNotices((prev) => [n, ...prev].slice(0, 6))
+    window.setTimeout(() => setNotices((prev) => prev.filter((x) => x.id !== n.id)), TOAST_MS)
+    beep(2)
+    showDesktop(n, true)
+  }, [beep])
+
   const requestDesktop = useCallback(async () => {
     if (typeof Notification === 'undefined') return
     try {
@@ -127,5 +168,5 @@ export function useHostNotices(participants: RosterEntry[], alerts: HostAlert[])
 
   const dismiss = useCallback((id: string) => setNotices((prev) => prev.filter((n) => n.id !== id)), [])
 
-  return { notices, dismiss, sound, setSound, desktop, requestDesktop }
+  return { notices, dismiss, sound, setSound, desktop, requestDesktop, testNotification }
 }

@@ -62,7 +62,14 @@ function TeacherPanel() {
   const [presets, setPresets] = useState<LessonPreset[]>(() => loadPresets().sort((a, b) => b.lastUsedAt - a.lastUsedAt))
   const [editing, setEditing] = useState<LessonPreset | null>(() => (loadPresets().length === 0 ? newPreset() : null))
 
-  const start = (p: LessonPreset) => {
+  const start = async (p: LessonPreset) => {
+    // Ask for desktop notifications on this click: browsers only allow the
+    // prompt from a user gesture, and the teacher will be in a meeting later.
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') await Notification.requestPermission()
+    } catch {
+      /* ignore */
+    }
     location.hash = `#/host/${p.roomCode}?preset=${p.id}`
   }
   const save = (p: LessonPreset) => {
@@ -108,7 +115,7 @@ function TeacherPanel() {
                 </span>
               </div>
               <div className="mt-auto flex items-center gap-2">
-                <button type="button" onClick={() => start(p)} className="btn-primary">
+                <button type="button" onClick={() => void start(p)} className="btn-primary">
                   Start lesson
                 </button>
                 <button type="button" onClick={() => setEditing({ ...p })} className="btn-ghost text-xs">
