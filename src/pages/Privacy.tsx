@@ -71,6 +71,15 @@ export default function Privacy() {
         alihasanli1905@gmail.com. We will respond as your local law requires.
       </Section>
 
+      <Section title="Terms of use">
+        FocusAI is free software released under the MIT licence. The full licence text is in the repository:{' '}
+        <a href="https://github.com/mdaelali/focusai/blob/main/LICENSE" target="_blank" rel="noreferrer" className="underline">
+          LICENSE
+        </a>
+        . The software is provided as is, without warranty. Use it only with students and classes you are allowed to
+        monitor, and follow your school's rules.
+      </Section>
+
       <Section title="Who runs FocusAI">
         FocusAI is run by Ali Hasanli. Questions or concerns: <a href="mailto:alihasanli1905@gmail.com" className="underline">alihasanli1905@gmail.com</a>.
       </Section>
