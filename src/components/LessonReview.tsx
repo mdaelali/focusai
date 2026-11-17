@@ -63,11 +63,18 @@ export function LessonReview({ students, timeline, startedAt, lessonName, onBack
   )
 }
 
+/** States a teacher would not call a dip. Everything else is listed as a dip. */
+const NORMAL: ReadonlySet<BehaviorState> = new Set<BehaviorState>(['attentive', 'taking_notes'])
+
 function StudentRow({ s, startedAt, span }: { s: ParticipantTotals; startedAt: number; span: number }) {
   const [open, setOpen] = useState(false)
+  const [dipsOnly, setDipsOnly] = useState(true)
   const total = Object.values(s.byState).reduce((a, b) => a + (b ?? 0), 0)
   const pct = (st: BehaviorState) => (total > 0 ? Math.round(((s.byState[st] ?? 0) / total) * 100) : 0)
   const episodes = s.episodes.filter((e) => e.end - e.start >= 1000)
+  const dips = episodes.filter((e) => !NORMAL.has(e.state))
+  const shown = dipsOnly ? dips : episodes
+  const longestDip = dips.reduce((m, e) => Math.max(m, e.end - e.start), 0)
   const order: BehaviorState[] = ['attentive', 'taking_notes', 'talking_to_someone', 'brief_interruption', 'stepped_away', 'distracted', 'using_phone', 'drowsy', 'no_data']
 
   return (
@@ -81,8 +88,16 @@ function StudentRow({ s, startedAt, span }: { s: ParticipantTotals; startedAt: n
           </span>
         </div>
         <button type="button" onClick={() => setOpen((v) => !v)} className="cursor-pointer text-xs text-[var(--info)] hover:underline">
-          {open ? 'Hide episodes' : `Show ${episodes.length} episodes`}
+          {open ? 'Hide episodes' : `Show ${shown.length} episodes`}
         </button>
+      </div>
+
+      {/* One-line summary: the numbers a teacher checks first */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+        <span className="font-medium">Attentive {pct('attentive')}%</span>
+        <span className="text-[var(--muted)]">
+          away {pct('stepped_away') + pct('brief_interruption')}% · {dips.length} dip{dips.length === 1 ? '' : 's'} · longest {dips.length ? fmtDuration(longestDip) : '—'}
+        </span>
       </div>
 
       {/* Whole-lesson strip */}
@@ -126,6 +141,15 @@ function StudentRow({ s, startedAt, span }: { s: ParticipantTotals; startedAt: n
       )}
 
       {open && (
+        <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
+          <span>{dipsOnly ? 'Showing dips only' : 'Showing every episode'}</span>
+          <button type="button" onClick={() => setDipsOnly((v) => !v)} className="cursor-pointer text-[var(--info)] hover:underline">
+            {dipsOnly ? 'Show all episodes' : 'Show dips only'}
+          </button>
+        </div>
+      )}
+
+      {open && (
         <table className="w-full text-left text-xs">
           <thead className="text-[var(--muted)]">
             <tr>
@@ -136,7 +160,7 @@ function StudentRow({ s, startedAt, span }: { s: ParticipantTotals; startedAt: n
             </tr>
           </thead>
           <tbody>
-            {episodes.map((e, i) => (
+            {shown.map((e, i) => (
               <tr key={i} className="border-t border-[var(--border)]">
                 <td className="py-1 pr-3 tabular-nums text-[var(--muted)]">{new Date(e.start).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                 <td className="py-1 pr-3 tabular-nums">{fmtDuration(e.end - e.start)}</td>
