@@ -4,6 +4,7 @@ import Lab from './pages/Lab'
 import Join from './pages/Join'
 import Host from './pages/Host'
 import Privacy from './pages/Privacy'
+import ZoomApp from './pages/ZoomApp'
 import { normaliseRoomCode } from './room/protocol'
 
 /*
@@ -12,11 +13,13 @@ import { normaliseRoomCode } from './room/protocol'
  *   #/lab           solo lab with raw measurements (the Phase 1 prototype)
  *   #/host/CODE     host dashboard for a room
  *   #/join/CODE?name=Alice   participant companion for a room
+ *   #/zoom          entry point when the site runs as a Zoom App
  */
 type Route =
   | { page: 'home' }
   | { page: 'lab' }
   | { page: 'privacy' }
+  | { page: 'zoom' }
   | { page: 'host'; room: string; preset: string | null }
   | { page: 'join'; room: string; name: string }
 
@@ -26,6 +29,7 @@ function parse(hash: string): Route {
   const parts = path.split('/').filter(Boolean)
   if (parts[0] === 'lab') return { page: 'lab' }
   if (parts[0] === 'privacy') return { page: 'privacy' }
+  if (parts[0] === 'zoom') return { page: 'zoom' }
   if (parts[0] === 'host' && parts[1]) return { page: 'host', room: normaliseRoomCode(parts[1]), preset: new URLSearchParams(query).get('preset') }
   if (parts[0] === 'join' && parts[1]) {
     const name = new URLSearchParams(query).get('name')?.trim() ?? ''
@@ -47,6 +51,8 @@ export default function App() {
       return <Lab />
     case 'privacy':
       return <Privacy />
+    case 'zoom':
+      return <ZoomApp />
     case 'host':
       return <Host room={route.room} presetId={route.preset} />
     case 'join':
