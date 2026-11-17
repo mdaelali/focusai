@@ -63,6 +63,14 @@ export default function Privacy() {
         with a parent's or guardian's agreement, following the school's rules.
       </Section>
 
+      <Section title="Your data rights">
+        FocusAI keeps no student data on any server, so there is nothing held centrally to give you or delete. The only
+        data is on your own device: your display name, and any lesson key your teacher keeps in their browser. You can
+        clear it at any time in your browser's site settings for myfocusai.app. To ask about data FocusAI processes, or
+        to use any right you have under your local law (such as access, correction, deletion or objection), email
+        alihasanli1905@gmail.com. We will respond as your local law requires.
+      </Section>
+
       <Section title="Who runs FocusAI">
         FocusAI is run by Ali Hasanli. Questions or concerns: <a href="mailto:alihasanli1905@gmail.com" className="underline">alihasanli1905@gmail.com</a>.
       </Section>
