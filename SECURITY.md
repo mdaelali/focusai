@@ -37,7 +37,7 @@ public issue for anything that could expose a student.
 | A malicious host page tries to pull video | There is no message type that carries media, and the participant client never reads the camera into anything but the local models. |
 | Cross-site scripting | Strict Content-Security-Policy in `vercel.json`: scripts only from this origin (WASM allowed), connections only to this origin and Supabase, no frames, no inline scripts. React escapes all rendered strings. |
 | Clickjacking | `frame-ancestors 'none'` and `X-Frame-Options: DENY`. |
-| Dependency vulnerabilities | Runtime dependencies have no known advisories. Build-time tooling (`vite`, `vitest`, `picomatch`, `tinyglobby`, `fdir`) has open advisories that `npm audit` cannot fix without a breaking change; they run only on the developer's machine and are not in the shipped bundle. Dependencies are pinned by the lockfile. |
+| Dependency vulnerabilities | Production dependencies have no known advisories (`npm audit --omit=dev` is clean). Six high-severity findings remain in build and test tooling (`vite`, `vitest`, `picomatch`, `tinyglobby`, `fdir`). The `picomatch` advisory GHSA-fc5q-39xc-vjpf has no patched release yet; it needs attacker-controlled glob patterns, and this build uses only fixed patterns. None of this code is in the shipped bundle. Re-check `npm audit` before each release. Dependencies are pinned by the lockfile. |
 
 ## What this is not
 
