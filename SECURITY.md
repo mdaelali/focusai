@@ -3,7 +3,7 @@
 ## Reporting
 
 Open a private security advisory on GitHub (Security tab → Report a vulnerability) or
-email the maintainer through the address on the GitHub profile. Please do not open a
+email the maintainer, Ali Hasanli, at alihasanli1905@gmail.com. Please do not open a
 public issue for anything that could expose a student.
 
 ## What the system holds
@@ -19,6 +19,8 @@ public issue for anything that could expose a student.
   private key never leaves it; the room code is the fingerprint of its public key. No student data.
 - **Reports:** generated in the host's browser and downloaded by the host. Nothing is
   uploaded.
+- **Plain text, by design:** the lesson's name and subject (sent in the host's hello message) and the room code. Lesson names should not contain student names.
+- **Third parties:** Google Fonts sees visitors' IP addresses. Vercel Web Analytics counts anonymous visits without cookies.
 - **Keys:** the Supabase URL and anon key are public by design (they are shipped to every
   browser). They grant nothing beyond joining a Realtime channel; this project uses no
   database tables with them.
@@ -35,7 +37,7 @@ public issue for anything that could expose a student.
 | A malicious host page tries to pull video | There is no message type that carries media, and the participant client never reads the camera into anything but the local models. |
 | Cross-site scripting | Strict Content-Security-Policy in `vercel.json`: scripts only from this origin (WASM allowed), connections only to this origin and Supabase, no frames, no inline scripts. React escapes all rendered strings. |
 | Clickjacking | `frame-ancestors 'none'` and `X-Frame-Options: DENY`. |
-| Dependency vulnerabilities | `npm audit` is clean at release; dependencies are pinned by the lockfile. |
+| Dependency vulnerabilities | Runtime dependencies have no known advisories. Build-time tooling (`vite`, `vitest`, `picomatch`, `tinyglobby`, `fdir`) has open advisories that `npm audit` cannot fix without a breaking change; they run only on the developer's machine and are not in the shipped bundle. Dependencies are pinned by the lockfile. |
 
 ## What this is not
 

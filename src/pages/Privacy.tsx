@@ -31,7 +31,7 @@ export default function Privacy() {
       </Section>
 
       <Section title="What is stored">
-        Nothing, on any server. Statuses pass through a relay and are gone. Your teacher's browser keeps the lesson's
+        FocusAI keeps no student messages or lesson data on any server. Statuses pass through a relay and are gone. Your teacher's browser keeps the lesson's
         timeline in memory until they close the page, and can download a report file to their own computer. Your browser
         remembers your name and a key for the current session only. Teachers' lesson settings and keys live in their own
         browser's storage.
@@ -50,10 +50,21 @@ export default function Privacy() {
         wins.
       </Section>
 
+      <Section title="Outside services">
+        The page loads its font from Google Fonts, so Google can see your IP address when you open FocusAI. The site also
+        uses Vercel Web Analytics to count visits. It sets no cookies and records only which page was opened (never a room code or a name).
+        The lesson's name and subject are sent to students in plain text when they join; they are not personal data, but
+        teachers should not put names in them.
+      </Section>
+
       <Section title="Your choices">
         You decide whether to share at all. You can stop at any time with one tap, turn the camera off, or leave. Nothing
         happens to you inside FocusAI if you do; your teacher simply sees "camera off" or "left". Children should share only
         with a parent's or guardian's agreement, following the school's rules.
+      </Section>
+
+      <Section title="Who runs FocusAI">
+        FocusAI is run by Ali Hasanli. Questions or concerns: <a href="mailto:alihasanli1905@gmail.com" className="underline">alihasanli1905@gmail.com</a>.
       </Section>
 
       <Section title="The code is open">
